@@ -29,6 +29,9 @@ import {
 } from 'lucide-react';
 
 import { AuthUser } from '../types/auth';
+import { DocumentTable } from './DocumentTable';
+import { DocumentChart } from './DocumentChart';
+import { extractTableAndCitationFromBlock } from '../data/provincialAndOfficialExams';
 
 interface AssignExamQRModalProps {
   isOpen: boolean;
@@ -543,17 +546,54 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
             </div>
 
             {/* Synchronized Exam Content Preview */}
+            {(() => {
+              const partIIIList = synchronizedStudentExam.partIII || [];
+              let totalImages = 0;
+              let totalTables = 0;
+              let totalCharts = 0;
+              const countMediaOnItem = (item: any, textForInline?: string) => {
+                const imgs = Array.isArray(item.images) && item.images.length > 0
+                  ? item.images
+                  : item.imageUrl
+                  ? [item.imageUrl]
+                  : [];
+                totalImages += imgs.length;
+                if (item.tableData) totalTables += 1;
+                else if (textForInline && (textForInline.includes('\t') || textForInline.includes('|'))) {
+                  const inlineCheck = extractTableAndCitationFromBlock(textForInline);
+                  if (inlineCheck.tableData) totalTables += 1 + (inlineCheck.extraTables?.length || 0);
+                }
+                totalTables += item.extraTables?.length || 0;
+                if (item.chartData) totalCharts += 1;
+                totalCharts += item.extraCharts?.length || 0;
+              };
+              synchronizedStudentExam.partI.forEach((q) => countMediaOnItem(q, q.question));
+              synchronizedStudentExam.partII.forEach((tf) => countMediaOnItem(tf, tf.scenario));
+              partIIIList.forEach((sa) => countMediaOnItem(sa, sa.question));
+
+              const mediaSummaryParts: string[] = [];
+              if (totalImages > 0) mediaSummaryParts.push(`${totalImages} ảnh`);
+              if (totalTables > 0) mediaSummaryParts.push(`${totalTables} bảng`);
+              if (totalCharts > 0) mediaSummaryParts.push(`${totalCharts} biểu đồ`);
+
+              return (
             <div className="bg-emerald-50/60 rounded-xl border border-emerald-200 p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-950">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-950 flex-wrap">
                   <FileText className="w-4 h-4 text-emerald-700 shrink-0" />
                   <span>
                     Nội dung đề đồng bộ trong Mã QR ({synchronizedStudentExam.partI.length} câu TN
                     {synchronizedStudentExam.partII.length > 0
                       ? ` + ${synchronizedStudentExam.partII.length} câu Đ/S`
                       : ''}
+                    {partIIIList.length > 0 ? ` + ${partIIIList.length} câu Phần III` : ''}
                     )
                   </span>
+                  {mediaSummaryParts.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-bold">
+                      Gồm: {mediaSummaryParts.join(' · ')}
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -575,41 +615,163 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
               </div>
 
               {showContentPreview && (
-                <div className="max-h-48 overflow-y-auto bg-white rounded-lg border border-emerald-100 p-2.5 space-y-2 text-xs">
-                  <div className="font-bold text-emerald-900 text-[11px] uppercase tracking-wider">
-                    Phần I — Trắc nghiệm ({synchronizedStudentExam.partI.length} câu):
-                  </div>
-                  {synchronizedStudentExam.partI.map((q) => (
-                    <div
-                      key={q.id}
-                      className="text-slate-700 border-b border-slate-100 pb-1.5 last:border-b-0"
-                    >
-                      <strong className="text-slate-900">Câu {q.number}:</strong>{' '}
-                      {q.question}
-                    </div>
-                  ))}
+                <div className="max-h-80 overflow-y-auto bg-white rounded-lg border border-emerald-100 p-2.5 space-y-2.5 text-xs">
+                  {synchronizedStudentExam.partI.length > 0 && (
+                    <>
+                      <div className="font-bold text-emerald-900 text-[11px] uppercase tracking-wider">
+                        Phần I — Trắc nghiệm ({synchronizedStudentExam.partI.length} câu):
+                      </div>
+                      {synchronizedStudentExam.partI.map((q) => {
+                        const qImgs = q.images && q.images.length > 0 ? q.images : q.imageUrl ? [q.imageUrl] : [];
+                        const inlineTbl =
+                          !q.tableData && q.question && (q.question.includes('\t') || q.question.includes('|'))
+                            ? extractTableAndCitationFromBlock(q.question)
+                            : null;
+                        const displayStem = inlineTbl?.tableData ? inlineTbl.cleanedText : q.question;
+                        const tables = [
+                          ...(q.tableData
+                            ? [q.tableData]
+                            : inlineTbl?.tableData
+                            ? [inlineTbl.tableData, ...(inlineTbl.extraTables || [])]
+                            : []),
+                          ...(q.extraTables || []),
+                        ];
+                        const charts = [...(q.chartData ? [q.chartData] : []), ...(q.extraCharts || [])];
+                        return (
+                          <div
+                            key={q.id}
+                            className="text-slate-700 border-b border-slate-100 pb-2 last:border-b-0 space-y-1.5"
+                          >
+                            <div className="whitespace-pre-line">
+                              <strong className="text-slate-900">Câu {q.number}:</strong>{' '}
+                              {displayStem}
+                            </div>
+                            {qImgs.length > 0 && (
+                              <div className="flex flex-wrap gap-2 py-1">
+                                {qImgs.map((src, idx) => (
+                                  <img
+                                    key={idx}
+                                    src={src}
+                                    alt={`Hình Câu ${q.number} (${idx + 1})`}
+                                    className="max-h-36 w-auto object-contain rounded border border-slate-200 bg-slate-50 p-0.5"
+                                  />
+                                ))}
+                              </div>
+                            )}
+                            {charts.map((ch, cIdx) => (
+                              <DocumentChart key={cIdx} chartData={ch} compact className="my-1" />
+                            ))}
+                            {tables.map((tbl, tIdx) => (
+                              <DocumentTable key={tIdx} tableData={tbl} compact className="my-1" />
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
 
                   {synchronizedStudentExam.partII.length > 0 && (
                     <>
                       <div className="font-bold text-amber-900 text-[11px] uppercase tracking-wider pt-2">
                         Phần II — Đúng/Sai ({synchronizedStudentExam.partII.length} câu tình huống):
                       </div>
-                      {synchronizedStudentExam.partII.map((tf) => (
-                        <div
-                          key={tf.id}
-                          className="text-slate-700 border-b border-slate-100 pb-1.5 last:border-b-0"
-                        >
-                          <strong className="text-slate-900">
-                            Câu {tf.number} ({tf.scenarioTitle || 'Tình huống'}):
-                          </strong>{' '}
-                          <span className="line-clamp-2">{tf.scenario}</span>
-                        </div>
-                      ))}
+                      {synchronizedStudentExam.partII.map((tf) => {
+                        const tfImgs = tf.images && tf.images.length > 0 ? tf.images : tf.imageUrl ? [tf.imageUrl] : [];
+                        const inlineTbl =
+                          !tf.tableData && tf.scenario && (tf.scenario.includes('\t') || tf.scenario.includes('|'))
+                            ? extractTableAndCitationFromBlock(tf.scenario)
+                            : null;
+                        const displayScenario = inlineTbl?.tableData ? inlineTbl.cleanedText : tf.scenario;
+                        const tables = [
+                          ...(tf.tableData
+                            ? [tf.tableData]
+                            : inlineTbl?.tableData
+                            ? [inlineTbl.tableData, ...(inlineTbl.extraTables || [])]
+                            : []),
+                          ...(tf.extraTables || []),
+                        ];
+                        const charts = [...(tf.chartData ? [tf.chartData] : []), ...(tf.extraCharts || [])];
+                        return (
+                          <div
+                            key={tf.id}
+                            className="text-slate-700 border-b border-slate-100 pb-2 last:border-b-0 space-y-1.5"
+                          >
+                            <div className="whitespace-pre-line">
+                              <strong className="text-slate-900">
+                                Câu {tf.number} ({tf.scenarioTitle || 'Tình huống'}):
+                              </strong>{' '}
+                              <span>{displayScenario}</span>
+                            </div>
+                            {tfImgs.length > 0 && (
+                              <div className="flex flex-wrap gap-2 py-1">
+                                {tfImgs.map((src, idx) => (
+                                  <img
+                                    key={idx}
+                                    src={src}
+                                    alt={`Hình Phần II Câu ${tf.number} (${idx + 1})`}
+                                    className="max-h-36 w-auto object-contain rounded border border-slate-200 bg-slate-50 p-0.5"
+                                  />
+                                ))}
+                              </div>
+                            )}
+                            {tables.map((tbl, tIdx) => (
+                              <DocumentTable key={tIdx} tableData={tbl} compact className="my-1" />
+                            ))}
+                            {charts.map((ch, cIdx) => (
+                              <DocumentChart key={cIdx} chartData={ch} compact className="my-1" />
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {partIIIList.length > 0 && (
+                    <>
+                      <div className="font-bold text-sky-900 text-[11px] uppercase tracking-wider pt-2">
+                        Phần III — Trả lời ngắn / Tự luận ({partIIIList.length} câu):
+                      </div>
+                      {partIIIList.map((sa) => {
+                        const saImgs = sa.images && sa.images.length > 0 ? sa.images : sa.imageUrl ? [sa.imageUrl] : [];
+                        const tables = [...(sa.tableData ? [sa.tableData] : []), ...(sa.extraTables || [])];
+                        const charts = [...(sa.chartData ? [sa.chartData] : []), ...(sa.extraCharts || [])];
+                        return (
+                          <div
+                            key={sa.id}
+                            className="text-slate-700 border-b border-slate-100 pb-2 last:border-b-0 space-y-1.5"
+                          >
+                            <div className="whitespace-pre-line">
+                              <strong className="text-slate-900">Câu {sa.originalNumber || sa.number}:</strong>{' '}
+                              {sa.question}
+                            </div>
+                            {saImgs.length > 0 && (
+                              <div className="flex flex-wrap gap-2 py-1">
+                                {saImgs.map((src, idx) => (
+                                  <img
+                                    key={idx}
+                                    src={src}
+                                    alt={`Hình Phần III Câu ${sa.number} (${idx + 1})`}
+                                    className="max-h-36 w-auto object-contain rounded border border-slate-200 bg-slate-50 p-0.5"
+                                  />
+                                ))}
+                              </div>
+                            )}
+                            {charts.map((ch, cIdx) => (
+                              <DocumentChart key={cIdx} chartData={ch} compact className="my-1" />
+                            ))}
+                            {tables.map((tbl, tIdx) => (
+                              <DocumentTable key={tIdx} tableData={tbl} compact className="my-1" />
+                            ))}
+                          </div>
+                        );
+                      })}
                     </>
                   )}
                 </div>
               )}
             </div>
+              );
+            })()}
           </div>
         </div>
 

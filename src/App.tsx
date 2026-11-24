@@ -1033,7 +1033,11 @@ export default function App() {
             isOpen={Boolean(assignQrExam)}
             onClose={() => setAssignQrExam(null)}
             exam={assignQrExam}
-            availableExams={examList}
+            availableExams={[
+              ...examList,
+              ...BUILTIN_PROVINCIAL_AND_OFFICIAL_EXAMS,
+              ...uploadedExams,
+            ]}
             currentUser={currentUser}
             onStartDirect={(exam, cfg) => {
               setSavedQrAssignments(

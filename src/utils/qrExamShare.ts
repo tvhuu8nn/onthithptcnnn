@@ -319,15 +319,17 @@ export async function syncAssignmentToServer(
   };
   saveAssignmentConfig(exam, permanentConfig);
   if (typeof window === 'undefined') return false;
+  const { attachedFileDataUrl: _omittedBlob, ...lightExam } = exam as any;
   try {
-    const { attachedFileDataUrl: _omittedBlob, ...lightExam } = exam as any;
     localStorage.setItem(`exam_data_${exam.code}`, JSON.stringify(lightExam));
     localStorage.setItem(`exam_data_${exam.id}`, JSON.stringify(lightExam));
   } catch {
     // ignore storage quota errors
   }
 
-  const payloadStr = JSON.stringify({ exam, config: permanentConfig });
+  // Luôn loại bỏ attachedFileDataUrl (tệp PDF/Word gốc dung lượng lớn) khi đồng bộ đề QR
+  // nhưng giữ nguyên 100% ảnh minh họa, bảng biểu (tableData/extraTables), biểu đồ (chartData/extraCharts) và Phần III
+  const payloadStr = JSON.stringify({ exam: lightExam, config: permanentConfig });
 
   const authHeaders = authService.getAuthHeaders({ 'Content-Type': 'application/json' });
 
@@ -477,8 +479,9 @@ export function generateStudentExamUrl(
   params.set('duration', String(config.durationMinutes || exam.durationMinutes || 50));
 
   try {
-    localStorage.setItem(`exam_data_${exam.code}`, JSON.stringify(exam));
-    localStorage.setItem(`exam_data_${exam.id}`, JSON.stringify(exam));
+    const { attachedFileDataUrl: _omittedBlob, ...lightExam } = exam as any;
+    localStorage.setItem(`exam_data_${exam.code}`, JSON.stringify(lightExam));
+    localStorage.setItem(`exam_data_${exam.id}`, JSON.stringify(lightExam));
   } catch {
     // ignore quota errors
   }

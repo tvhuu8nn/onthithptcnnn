@@ -1949,8 +1949,36 @@ app.post('/api/assignments', (req: Request, res: Response) => {
     }
   }
 
+  // Loại bỏ attachedFileDataUrl (file PDF/Word gốc dung lượng lớn) nhưng giữ nguyên 100% ảnh, bảng, biểu đồ và Phần III
+  const { attachedFileDataUrl: _omitBlob, ...examWithoutBlob } = exam;
+  const mergedExamForAssignment = matchedUploaded
+    ? {
+        ...examWithoutBlob,
+        ...(examWithoutBlob.rawDocumentText
+          ? {}
+          : matchedUploaded.rawDocumentText
+          ? { rawDocumentText: matchedUploaded.rawDocumentText }
+          : {}),
+        ...(examWithoutBlob.rawDocumentImages
+          ? {}
+          : matchedUploaded.rawDocumentImages
+          ? { rawDocumentImages: matchedUploaded.rawDocumentImages }
+          : {}),
+        ...(examWithoutBlob.rawDocumentTables
+          ? {}
+          : matchedUploaded.rawDocumentTables
+          ? { rawDocumentTables: matchedUploaded.rawDocumentTables }
+          : {}),
+        ...(examWithoutBlob.rawDocumentCharts
+          ? {}
+          : matchedUploaded.rawDocumentCharts
+          ? { rawDocumentCharts: matchedUploaded.rawDocumentCharts }
+          : {}),
+      }
+    : examWithoutBlob;
+
   const record = {
-    exam,
+    exam: mergedExamForAssignment,
     config: normalizedCfg,
     isPermanent: true,
     expiresAt: 'never',
@@ -6465,6 +6493,7 @@ function escapeHtmlServer(str: string): string {
 function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
   const partIList = Array.isArray(exam?.partI) ? exam.partI : [];
   const partIIList = Array.isArray(exam?.partII) ? exam.partII : [];
+  const partIIIList = Array.isArray(exam?.partIII) ? exam.partIII : [];
   const durationMinutes = Number(config.durationMinutes || exam?.durationMinutes || 50);
   const className = String(config.className || 'Ôn THPT').trim();
   const showSolutionsAfterSubmit = config.showSolutionsAfterSubmit !== false;
@@ -6475,11 +6504,15 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
   const teacherUsername = String(config.teacherUsername || '').trim();
   const teacherName = String(config.teacherName || '').trim();
 
+  // Loại bỏ attachedFileDataUrl để trang thi trên điện thoại tải nhanh, giữ nguyên 100% ảnh, bảng, biểu đồ và Phần III
+  const { attachedFileDataUrl: _omitPdfBlob, ...cleanExam } = exam || {};
+
   const safePayload = JSON.stringify({
     exam: {
-      ...exam,
+      ...cleanExam,
       partI: partIList,
       partII: partIIList,
+      partIII: partIIIList,
     },
     config: {
       examId: exam?.id || 'de-chuan-01',
@@ -6835,25 +6868,268 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
       margin-bottom: 6px;
       font-size: 14px;
     }
+    .media-images-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin: 10px 0 12px;
+    }
+    .media-images-grid.multi {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .media-image-box {
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      background: #ffffff;
+      padding: 8px;
+      text-align: center;
+      overflow: hidden;
+    }
+    .media-image-box img {
+      max-width: 100%;
+      max-height: 360px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+      margin: 0 auto;
+      cursor: zoom-in;
+    }
+    .media-image-hint {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .doc-table-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      background: #ffffff;
+      overflow: hidden;
+      margin: 10px 0 12px;
+    }
+    .doc-table-caption {
+      padding: 7px 11px;
+      background: #f1f5f9;
+      border-bottom: 1px solid #cbd5e1;
+      font-size: 12px;
+      font-weight: 800;
+      color: #1e293b;
+    }
+    .doc-table-footer {
+      padding: 6px 11px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      font-size: 11px;
+      color: #475569;
+      font-style: italic;
+    }
     .data-table-wrap {
       overflow-x: auto;
-      margin: 8px 0;
+      -webkit-overflow-scrolling: touch;
+      width: 100%;
     }
     .data-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 13px;
+      font-size: 12.5px;
       background: #ffffff;
+      color: #1e293b;
     }
     .data-table th, .data-table td {
       border: 1px solid #cbd5e1;
       padding: 6px 8px;
-      text-align: center;
+      vertical-align: middle;
+      word-break: break-word;
+      white-space: pre-line;
+      line-height: 1.35;
     }
     .data-table th {
       background: #ecfdf5;
       color: #065f46;
       font-weight: 800;
+      text-align: center;
+    }
+    .data-table tr.zebra {
+      background: #f8fafc;
+    }
+    .doc-chart-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      background: #ffffff;
+      overflow: hidden;
+      margin: 10px 0 12px;
+    }
+    .doc-chart-header {
+      padding: 8px 11px;
+      background: #f1f5f9;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .doc-chart-title {
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #1e293b;
+    }
+    .doc-chart-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .doc-chart-unit {
+      font-size: 11px;
+      font-weight: 700;
+      color: #065f46;
+      background: #d1fae5;
+      border: 1px solid #a7f3d0;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+    .doc-chart-toggle {
+      font-size: 11px;
+      font-weight: 700;
+      color: #334155;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      padding: 3px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .doc-chart-body {
+      padding: 12px;
+    }
+    .doc-chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
+    }
+    .doc-chart-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .doc-chart-swatch {
+      width: 11px;
+      height: 11px;
+      border-radius: 3px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .hbar-row { margin-bottom: 10px; }
+    .hbar-row:last-child { margin-bottom: 0; }
+    .hbar-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .hbar-label { font-weight: 700; color: #1e293b; }
+    .hbar-val { font-weight: 800; color: #065f46; font-family: ui-monospace, monospace; white-space: nowrap; }
+    .hbar-track {
+      height: 22px;
+      width: 100%;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+      padding: 2px;
+      overflow: hidden;
+    }
+    .hbar-fill {
+      height: 100%;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #ffffff;
+      font-family: ui-monospace, monospace;
+    }
+    .pie-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+    .pie-legend {
+      flex: 1;
+      min-width: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .pie-legend-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 5px 8px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+    }
+    .sa-textarea {
+      width: 100%;
+      min-height: 76px;
+      padding: 10px 12px;
+      border: 2px solid #cbd5e1;
+      border-radius: 12px;
+      font-size: 14px;
+      font-family: inherit;
+      color: #0f172a;
+      background: #f8fafc;
+      outline: none;
+      resize: vertical;
+    }
+    .sa-textarea:focus {
+      border-color: #0284c7;
+      background: #ffffff;
+    }
+    .img-lightbox {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.88);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 200;
+      padding: 16px;
+    }
+    .img-lightbox.open { display: flex; }
+    .img-lightbox img {
+      max-width: 96vw;
+      max-height: 82vh;
+      object-fit: contain;
+      border-radius: 10px;
+      background: #ffffff;
+      padding: 6px;
+    }
+    .img-lightbox-close {
+      padding: 8px 18px;
+      border-radius: 10px;
+      border: none;
+      background: #ffffff;
+      color: #0f172a;
+      font-weight: 800;
+      font-size: 13px;
+      cursor: pointer;
     }
     .tf-row {
       border: 1.5px solid #e2e8f0;
@@ -7011,7 +7287,7 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button type="button" id="headerExitBtn" class="btn-header-exit" onclick="triggerViolation('Nhấn nút thoát khỏi giao diện làm bài thi')">← Rời thi</button>
         <span class="badge-code">MÃ ĐỀ: ${escapeHtmlServer(exam?.code || '101')}</span>
-        <span id="progressText" style="font-size:12px;font-weight:700;color:#d1fae5;">Đã làm: 0/${partIList.length} TN · 0/${partIIList.length * 4} Đ/S</span>
+        <span id="progressText" style="font-size:12px;font-weight:700;color:#d1fae5;">Đã làm: 0/${partIList.length} TN · 0/${partIIList.length * 4} Đ/S${partIIIList.length > 0 ? ` · 0/${partIIIList.length} Phần III` : ''}</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button type="button" id="violationBadge" class="badge-violation" onclick="openViolationModal()">⚠️ Thoát: <span id="violationBadgeCount">0/5</span></button>
@@ -7035,7 +7311,7 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
       </div>
       <h1 class="exam-title">${escapeHtmlServer(exam?.title || 'Đề Thi Công Nghệ Nông Nghiệp THPT')}</h1>
       <div class="exam-meta">
-        Cấu trúc chuẩn Bộ GD&amp;ĐT: ${partIList.length} câu Trắc nghiệm 4 lựa chọn &amp; ${partIIList.length} câu Đúng/Sai (${partIIList.length * 4} ý)
+        Cấu trúc đề: ${partIList.length} câu Trắc nghiệm 4 lựa chọn &amp; ${partIIList.length} câu Đúng/Sai (${partIIList.length * 4} ý)${partIIIList.length > 0 ? ` &amp; ${partIIIList.length} câu Trả lời ngắn / Tự luận` : ''}
       </div>
       ${
         teacherUsername || teacherName
@@ -7101,7 +7377,7 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
     <div class="bottom-inner">
       <div>
         <div style="font-size:13px;font-weight:800;color:#0f172a;" id="bottomStatusTitle">
-          Tiến độ: 0/${partIList.length} câu TN · 0/${partIIList.length * 4} ý Đ/S
+          Tiến độ: 0/${partIList.length} câu TN · 0/${partIIList.length * 4} ý Đ/S${partIIIList.length > 0 ? ` · 0/${partIIIList.length} Phần III` : ''}
         </div>
         <div style="font-size:11px;color:#64748b;font-weight:600;">
           Điểm số sẽ tự động gửi về Bảng Điểm của Giáo viên khi nộp bài
@@ -7149,16 +7425,26 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
     </div>
   </div>
 
+  <div id="imgLightbox" class="img-lightbox" onclick="closeImageLightbox()">
+    <img id="imgLightboxPic" src="" alt="Phóng to hình ảnh" onclick="event.stopPropagation()" />
+    <div id="imgLightboxCaption" style="color:#e2e8f0;font-size:13px;font-weight:700;text-align:center;"></div>
+    <button type="button" class="img-lightbox-close" onclick="closeImageLightbox()">✕ Đóng ảnh</button>
+  </div>
+
   <script id="exam-payload" type="application/json">${safePayload}</script>
   <script>
     (function() {
       var payloadEl = document.getElementById('exam-payload');
       var payload = JSON.parse(payloadEl.textContent || '{}');
-      var exam = payload.exam;
+      var exam = payload.exam || {};
+      exam.partI = Array.isArray(exam.partI) ? exam.partI : [];
+      exam.partII = Array.isArray(exam.partII) ? exam.partII : [];
+      exam.partIII = Array.isArray(exam.partIII) ? exam.partIII : [];
       var config = payload.config || {};
 
       var answersPartI = {};
       var answersPartII = {};
+      var answersPartIII = {};
       for (var i = 0; i < exam.partII.length; i++) {
         var q = exam.partII[i];
         answersPartII[q.id] = { a: null, b: null, c: null, d: null };
@@ -7183,43 +7469,543 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
       } catch (e) {}
 
       function esc(str) {
-        return String(str || '')
+        return String(str === null || str === undefined ? '' : str)
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;');
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
       }
 
-      function renderScenarioContent(scenarioText) {
-        var lines = String(scenarioText || '').split('\\n');
-        var htmlParts = [];
-        var tableLines = [];
+      function isSafeImgSrc(src) {
+        if (typeof src !== 'string') return false;
+        var s = src.trim();
+        if (!s) return false;
+        return /^data:image\\/[a-zA-Z0-9.+-]+;base64,/i.test(s) || /^https?:\\/\\//i.test(s) || s.indexOf('/') === 0;
+      }
 
-        function flushTable() {
-          if (tableLines.length === 0) return;
-          var tHtml = '<div class="data-table-wrap"><table class="data-table">';
-          for (var r = 0; r < tableLines.length; r++) {
-            var cells = tableLines[r].split('|').map(function(c) { return c.trim(); }).filter(Boolean);
-            if (cells.length === 0) continue;
-            var tag = r === 0 ? 'th' : 'td';
-            tHtml += '<tr>' + cells.map(function(c) { return '<' + tag + '>' + esc(c) + '</' + tag + '>'; }).join('') + '</tr>';
+      var CHART_PALETTE = ['#059669', '#0284c7', '#d97706', '#7c3aed', '#e11d48', '#0d9488', '#475569', '#ea580c'];
+      var chartRenderSeq = 0;
+
+      function formatChartNum(val, display) {
+        if (display !== undefined && display !== null && String(display).trim().length > 0) {
+          return String(display).trim();
+        }
+        if (val === null || val === undefined || !isFinite(Number(val))) return '—';
+        var n = Number(val);
+        if (Math.floor(n) === n) return String(n);
+        return String(Number(n.toFixed(4))).replace('.', ',');
+      }
+
+      function polarToCartesian(cx, cy, r, angleDeg) {
+        var rad = ((angleDeg - 90) * Math.PI) / 180;
+        return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+      }
+
+      function describePieSlice(cx, cy, r, startAngle, endAngle) {
+        var span = Math.min(359.99, Math.max(0.01, endAngle - startAngle));
+        var start = polarToCartesian(cx, cy, r, startAngle + span);
+        var end = polarToCartesian(cx, cy, r, startAngle);
+        var largeArc = span > 180 ? 1 : 0;
+        return 'M ' + cx + ' ' + cy + ' L ' + end.x.toFixed(2) + ' ' + end.y.toFixed(2) + ' A ' + r + ' ' + r + ' 0 ' + largeArc + ' 1 ' + start.x.toFixed(2) + ' ' + start.y.toFixed(2) + ' Z';
+      }
+
+      window.openImageLightbox = function(imgEl) {
+        try {
+          var src = imgEl && imgEl.getAttribute('src');
+          var alt = (imgEl && imgEl.getAttribute('alt')) || '';
+          if (!src || !isSafeImgSrc(src)) return;
+          document.getElementById('imgLightboxPic').src = src;
+          document.getElementById('imgLightboxCaption').textContent = alt;
+          document.getElementById('imgLightbox').classList.add('open');
+        } catch (e) {}
+      };
+
+      window.closeImageLightbox = function() {
+        var el = document.getElementById('imgLightbox');
+        if (el) el.classList.remove('open');
+      };
+
+      window.toggleChartRawTable = function(tableId, btnEl) {
+        var el = document.getElementById(tableId);
+        if (!el) return;
+        var isHidden = el.style.display === 'none' || !el.style.display;
+        el.style.display = isHidden ? 'block' : 'none';
+        if (btnEl) btnEl.textContent = isHidden ? 'Ẩn bảng số liệu' : 'Số liệu gốc';
+      };
+
+      function renderImagesListHtml(imgList, altPrefix) {
+        var valid = [];
+        var seen = {};
+        for (var i = 0; i < imgList.length; i++) {
+          var s = imgList[i];
+          if (isSafeImgSrc(s) && !seen[s]) {
+            seen[s] = true;
+            valid.push(s);
           }
-          tHtml += '</table></div>';
-          htmlParts.push(tHtml);
-          tableLines = [];
+        }
+        if (valid.length === 0) return '';
+        var html = '<div class="media-images-grid' + (valid.length > 1 ? ' multi' : '') + '">';
+        for (var k = 0; k < valid.length; k++) {
+          var altText = altPrefix + (valid.length > 1 ? ' (' + (k + 1) + ')' : '');
+          html += '<div class="media-image-box">' +
+            '<img src="' + esc(valid[k]) + '" alt="' + esc(altText) + '" loading="lazy" onclick="openImageLightbox(this)" />' +
+            '<div class="media-image-hint">🔍 Chạm vào ảnh để phóng to</div>' +
+          '</div>';
+        }
+        html += '</div>';
+        return html;
+      }
+
+      function renderItemImagesHtml(item, altPrefix) {
+        if (!item) return '';
+        var list = [];
+        if (Array.isArray(item.images) && item.images.length > 0) {
+          list = item.images;
+        } else if (item.imageUrl) {
+          list = [item.imageUrl];
+        }
+        return renderImagesListHtml(list, altPrefix);
+      }
+
+      function renderStructuredTableHtml(tbl) {
+        if (!tbl || typeof tbl !== 'object') return '';
+        var headers = Array.isArray(tbl.headers) ? tbl.headers : [];
+        var rows = Array.isArray(tbl.rows) ? tbl.rows : [];
+        var structuredRows = Array.isArray(tbl.structuredRows) && tbl.structuredRows.length > 0 ? tbl.structuredRows : null;
+        if (!structuredRows && headers.length === 0 && rows.length === 0) return '';
+
+        var colWidths = Array.isArray(tbl.colWidths) ? tbl.colWidths : [];
+        var alignments = Array.isArray(tbl.alignments) ? tbl.alignments : [];
+        var colCount = Math.max(headers.length, colWidths.length, rows[0] ? rows[0].length : 0, 1);
+        var minWidthStyle = colCount >= 5 ? ' style="min-width:' + (colCount * 96) + 'px;"' : '';
+
+        var html = '<div class="doc-table-card">';
+        if (tbl.caption) {
+          html += '<div class="doc-table-caption">📊 ' + esc(tbl.caption) + '</div>';
+        }
+        html += '<div class="data-table-wrap"><table class="data-table"' + minWidthStyle + '>';
+        if (colWidths.length > 0) {
+          html += '<colgroup>';
+          for (var cw = 0; cw < colWidths.length; cw++) {
+            html += '<col style="width:' + Number(colWidths[cw] || 0) + '%" />';
+          }
+          html += '</colgroup>';
+        }
+
+        if (structuredRows) {
+          html += '<tbody>';
+          for (var r = 0; r < structuredRows.length; r++) {
+            var sRow = structuredRows[r] || {};
+            var isHRow = Boolean(sRow.isHeader) || r === 0;
+            var cells = Array.isArray(sRow.cells) ? sRow.cells : [];
+            html += '<tr class="' + (!isHRow && r % 2 === 0 ? 'zebra' : '') + '">';
+            for (var c = 0; c < cells.length; c++) {
+              var cell = cells[c] || {};
+              var isTh = isHRow || Boolean(cell.isHeader);
+              var tag = isTh ? 'th' : 'td';
+              var align = cell.align || (isTh ? 'center' : (alignments[c] || (c === 0 ? 'left' : 'center')));
+              var attrs = ' style="text-align:' + esc(align) + ';' + (!isTh && c === 0 && align === 'left' ? 'font-weight:700;' : '') + '"';
+              if (cell.colSpan && cell.colSpan > 1) attrs += ' colspan="' + Number(cell.colSpan) + '"';
+              if (cell.rowSpan && cell.rowSpan > 1) attrs += ' rowspan="' + Number(cell.rowSpan) + '"';
+              html += '<' + tag + attrs + '>' + esc(cell.text) + '</' + tag + '>';
+            }
+            html += '</tr>';
+          }
+          html += '</tbody>';
+        } else {
+          if (headers.length > 0) {
+            html += '<thead><tr>';
+            for (var h = 0; h < headers.length; h++) {
+              html += '<th>' + esc(headers[h]) + '</th>';
+            }
+            html += '</tr></thead>';
+          }
+          html += '<tbody>';
+          for (var ri = 0; ri < rows.length; ri++) {
+            var row = Array.isArray(rows[ri]) ? rows[ri] : [];
+            html += '<tr class="' + (ri % 2 === 1 ? 'zebra' : '') + '">';
+            for (var ci = 0; ci < row.length; ci++) {
+              var cAlign = alignments[ci] || (ci === 0 ? 'left' : 'center');
+              var cStyle = 'text-align:' + esc(cAlign) + ';' + (ci === 0 && cAlign === 'left' ? 'font-weight:700;' : '');
+              html += '<td style="' + cStyle + '">' + esc(row[ci]) + '</td>';
+            }
+            html += '</tr>';
+          }
+          html += '</tbody>';
+        }
+
+        html += '</table></div>';
+        if (tbl.source || tbl.note) {
+          html += '<div class="doc-table-footer">';
+          if (tbl.source) html += '<div style="text-align:right;font-weight:600;">' + esc(tbl.source) + '</div>';
+          if (tbl.note) html += '<div>' + esc(tbl.note) + '</div>';
+          html += '</div>';
+        }
+        html += '</div>';
+        return html;
+      }
+
+      function renderStructuredChartHtml(ch) {
+        if (!ch || typeof ch !== 'object') return '';
+        var unit = String(ch.unit || '').trim();
+        var categories = [];
+        if (Array.isArray(ch.categories) && ch.categories.length > 0) {
+          categories = ch.categories.map(function(c) { return String(c === null || c === undefined ? '' : c); });
+        } else if (Array.isArray(ch.items) && ch.items.length > 0) {
+          categories = ch.items.map(function(it) { return String((it && it.label) || ''); });
+        }
+
+        var series = [];
+        if (Array.isArray(ch.series) && ch.series.length > 0) {
+          for (var si = 0; si < ch.series.length; si++) {
+            var sObj = ch.series[si] || {};
+            series.push({
+              name: String(sObj.name || ('Chuỗi ' + (si + 1))),
+              values: Array.isArray(sObj.values) ? sObj.values : [],
+              displayValues: Array.isArray(sObj.displayValues) ? sObj.displayValues : null,
+              color: sObj.color || CHART_PALETTE[si % CHART_PALETTE.length]
+            });
+          }
+        } else if (Array.isArray(ch.items) && ch.items.length > 0) {
+          series.push({
+            name: unit ? ('Giá trị (' + unit + ')') : 'Giá trị',
+            values: ch.items.map(function(it) { return isFinite(Number(it && it.value)) ? Number(it.value) : 0; }),
+            displayValues: ch.items.map(function(it) {
+              return (it && it.displayValue !== undefined) ? String(it.displayValue) : formatChartNum(it && it.value);
+            }),
+            color: CHART_PALETTE[0]
+          });
+        }
+
+        if (categories.length === 0 || series.length === 0) return '';
+
+        var allNums = [];
+        for (var a = 0; a < series.length; a++) {
+          for (var b = 0; b < series[a].values.length; b++) {
+            var v = series[a].values[b];
+            if (typeof v === 'number' && isFinite(v)) allNums.push(v);
+          }
+        }
+        var maxVal = allNums.length > 0 ? Math.max.apply(null, allNums.concat([0])) : 1;
+        var minVal = allNums.length > 0 ? Math.min.apply(null, allNums.concat([0])) : 0;
+        if (maxVal === minVal) maxVal = minVal + 1;
+        minVal = Math.min(0, minVal);
+
+        var isMultiSeries = series.length > 1;
+        var chartType = ch.type || 'column';
+        var isHorizontalSingleBar = chartType === 'bar' && !isMultiSeries && Array.isArray(ch.items) && ch.items.length > 0;
+        chartRenderSeq++;
+        var rawTblId = 'chart-raw-tbl-' + chartRenderSeq;
+
+        var html = '<div class="doc-chart-card">';
+        html += '<div class="doc-chart-header">' +
+          '<span class="doc-chart-title">📈 ' + esc(ch.caption || 'Biểu đồ dữ liệu thực nghiệm') + '</span>' +
+          '<div class="doc-chart-actions">' +
+            (unit ? '<span class="doc-chart-unit">Đơn vị: ' + esc(unit) + '</span>' : '') +
+            '<button type="button" class="doc-chart-toggle" onclick="toggleChartRawTable(\\'' + rawTblId + '\\', this)">Số liệu gốc</button>' +
+          '</div>' +
+        '</div>';
+
+        html += '<div class="doc-chart-body">';
+        if (isMultiSeries && chartType !== 'pie') {
+          html += '<div class="doc-chart-legend">';
+          for (var li = 0; li < series.length; li++) {
+            html += '<span class="doc-chart-legend-item"><span class="doc-chart-swatch" style="background:' + esc(series[li].color) + ';"></span><span>' + esc(series[li].name) + '</span></span>';
+          }
+          html += '</div>';
+        }
+
+        if (isHorizontalSingleBar) {
+          var maxAbs = 0.1;
+          for (var hi = 0; hi < ch.items.length; hi++) {
+            var hv = Math.abs(Number(ch.items[hi].value) || 0);
+            if (hv > maxAbs) maxAbs = hv;
+          }
+          for (var hi2 = 0; hi2 < ch.items.length; hi2++) {
+            var item = ch.items[hi2];
+            var pct = Math.min(100, Math.max(12, (Math.abs(Number(item.value) || 0) / (maxAbs * 1.12)) * 100));
+            var lblVal = formatChartNum(item.value, item.displayValue);
+            var barBg = item.highlight ? 'linear-gradient(90deg,#059669,#14b8a6)' : 'linear-gradient(90deg,#475569,#64748b)';
+            html += '<div class="hbar-row">' +
+              '<div class="hbar-head"><span class="hbar-label">' + esc(item.label) + '</span><span class="hbar-val">' + esc(lblVal) + (unit ? ' ' + esc(unit) : '') + '</span></div>' +
+              '<div class="hbar-track"><div class="hbar-fill" style="width:' + pct.toFixed(1) + '%;background:' + barBg + ';">' + esc(lblVal) + '</div></div>' +
+              (item.subLabel ? '<div style="font-size:11px;color:#64748b;font-style:italic;margin-top:2px;">' + esc(item.subLabel) + '</div>' : '') +
+            '</div>';
+          }
+        } else if (chartType === 'pie') {
+          var firstS = series[0];
+          var slices = [];
+          var pieTotal = 0;
+          for (var pi = 0; pi < categories.length; pi++) {
+            var rv = firstS.values[pi];
+            var pv = (typeof rv === 'number' && isFinite(rv) && rv > 0) ? rv : 0;
+            pieTotal += pv;
+            slices.push({
+              label: categories[pi],
+              value: pv,
+              display: formatChartNum(rv, firstS.displayValues && firstS.displayValues[pi]),
+              color: CHART_PALETTE[pi % CHART_PALETTE.length]
+            });
+          }
+          if (pieTotal <= 0) pieTotal = 1;
+          var curAngle = 0;
+          var paths = '';
+          var legRows = '';
+          for (var pi2 = 0; pi2 < slices.length; pi2++) {
+            var sl = slices[pi2];
+            var ang = (sl.value / pieTotal) * 360;
+            if (sl.value > 0) {
+              paths += '<path d="' + describePieSlice(100, 100, 86, curAngle, curAngle + ang) + '" fill="' + esc(sl.color) + '" stroke="#ffffff" stroke-width="1.8" />';
+            }
+            curAngle += ang;
+            var pPct = ((sl.value / pieTotal) * 100).toFixed(1).replace('.', ',');
+            legRows += '<div class="pie-legend-row">' +
+              '<span style="display:inline-flex;align-items:center;gap:6px;font-weight:700;color:#1e293b;"><span class="doc-chart-swatch" style="background:' + esc(sl.color) + ';"></span><span>' + esc(sl.label) + '</span></span>' +
+              '<span style="font-family:ui-monospace,monospace;font-weight:800;color:#0f172a;white-space:nowrap;">' + esc(sl.display) + (unit ? ' ' + esc(unit) : '') + ' (' + pPct + '%)</span>' +
+            '</div>';
+          }
+          html += '<div class="pie-wrap">' +
+            '<svg viewBox="0 0 200 200" style="width:168px;height:168px;flex-shrink:0;" role="img">' + paths + '</svg>' +
+            '<div class="pie-legend">' + legRows + '</div>' +
+          '</div>';
+        } else if (chartType === 'line' || chartType === 'area') {
+          var catCountL = categories.length;
+          var svgWL = Math.max(440, catCountL * 74 + 74);
+          var svgHL = 240;
+          var pLeftL = 48, pRightL = 22, pTopL = 24, pBotL = 48;
+          var plotWL = svgWL - pLeftL - pRightL;
+          var plotHL = svgHL - pTopL - pBotL;
+          var rangeL = Math.max(maxVal - minVal, 0.001);
+          var yMaxL = maxVal + rangeL * 0.15;
+          var yMinL = minVal;
+          var ySpanL = Math.max(yMaxL - yMinL, 0.001);
+          var valToYL = function(val) { return pTopL + plotHL - ((val - yMinL) / ySpanL) * plotHL; };
+          var idxToXL = function(idx) { return catCountL <= 1 ? pLeftL + plotWL / 2 : pLeftL + (plotWL * idx) / (catCountL - 1); };
+
+          var svgBodyL = '';
+          for (var gt = 0; gt <= 4; gt++) {
+            var tv = yMinL + (ySpanL * gt) / 4;
+            var ty = valToYL(tv);
+            svgBodyL += '<line x1="' + pLeftL + '" y1="' + ty.toFixed(1) + '" x2="' + (svgWL - pRightL) + '" y2="' + ty.toFixed(1) + '" stroke="' + (gt === 0 ? '#94a3b8' : '#e2e8f0') + '" stroke-width="' + (gt === 0 ? '1.2' : '1') + '"' + (gt === 0 ? '' : ' stroke-dasharray="3 3"') + ' />';
+            svgBodyL += '<text x="' + (pLeftL - 6) + '" y="' + (ty + 3.5).toFixed(1) + '" text-anchor="end" font-size="10" fill="#64748b" font-family="ui-monospace,monospace">' + esc(formatChartNum(Number(tv.toFixed(2)))) + '</text>';
+          }
+          for (var xi = 0; xi < catCountL; xi++) {
+            var xPos = idxToXL(xi);
+            var shortC = categories[xi].length > 16 ? categories[xi].slice(0, 15) + '…' : categories[xi];
+            svgBodyL += '<text x="' + xPos.toFixed(1) + '" y="' + (svgHL - pBotL + 18) + '" text-anchor="middle" font-size="10.5" font-weight="600" fill="#334155">' + esc(shortC) + '</text>';
+          }
+          for (var slIdx = 0; slIdx < series.length; slIdx++) {
+            var serL = series[slIdx];
+            var pts = [];
+            for (var pIdx = 0; pIdx < catCountL; pIdx++) {
+              var pvL = serL.values[pIdx];
+              if (typeof pvL === 'number' && isFinite(pvL)) {
+                pts.push({ x: idxToXL(pIdx), y: valToYL(pvL), val: pvL, idx: pIdx });
+              }
+            }
+            if (pts.length === 0) continue;
+            var dPath = pts.map(function(p, k) { return (k === 0 ? 'M ' : 'L ') + p.x.toFixed(1) + ' ' + p.y.toFixed(1); }).join(' ');
+            if (chartType === 'area' && pts.length >= 2) {
+              var areaPath = dPath + ' L ' + pts[pts.length - 1].x.toFixed(1) + ' ' + (pTopL + plotHL).toFixed(1) + ' L ' + pts[0].x.toFixed(1) + ' ' + (pTopL + plotHL).toFixed(1) + ' Z';
+              svgBodyL += '<path d="' + areaPath + '" fill="' + esc(serL.color) + '" opacity="0.14" />';
+            }
+            svgBodyL += '<path d="' + dPath + '" fill="none" stroke="' + esc(serL.color) + '" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />';
+            for (var ptI = 0; ptI < pts.length; ptI++) {
+              var pt = pts[ptI];
+              var pLbl = formatChartNum(pt.val, serL.displayValues && serL.displayValues[pt.idx]);
+              svgBodyL += '<circle cx="' + pt.x.toFixed(1) + '" cy="' + pt.y.toFixed(1) + '" r="4" fill="#ffffff" stroke="' + esc(serL.color) + '" stroke-width="2.2" />';
+              svgBodyL += '<text x="' + pt.x.toFixed(1) + '" y="' + Math.max(12, pt.y - 8 - (slIdx % 2) * 10).toFixed(1) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1e293b" font-family="ui-monospace,monospace">' + esc(pLbl) + '</text>';
+            }
+          }
+          html += '<div class="data-table-wrap"><svg viewBox="0 0 ' + svgWL + ' ' + svgHL + '" style="width:100%;height:auto;display:block;' + (catCountL >= 6 ? 'min-width:' + svgWL + 'px;' : '') + '" role="img">' + svgBodyL + '</svg></div>';
+        } else {
+          var catCountC = categories.length;
+          var serCountC = series.length;
+          var svgWC = Math.max(440, catCountC * Math.max(74, serCountC * 28 + 24) + 70);
+          var svgHC = 245;
+          var pLeftC = 48, pRightC = 18, pTopC = 24, pBotC = 50;
+          var plotWC = svgWC - pLeftC - pRightC;
+          var plotHC = svgHC - pTopC - pBotC;
+          var rangeC = Math.max(maxVal - minVal, 0.001);
+          var yMaxC = maxVal + rangeC * 0.15;
+          var yMinC = minVal;
+          var ySpanC = Math.max(yMaxC - yMinC, 0.001);
+          var valToYC = function(val) { return pTopC + plotHC - ((val - yMinC) / ySpanC) * plotHC; };
+          var zeroYC = valToYC(0);
+          var groupW = plotWC / catCountC;
+          var innerGW = Math.min(groupW * 0.74, serCountC * 34);
+          var barGap = serCountC > 1 ? 4 : 0;
+          var barW = Math.max(10, (innerGW - barGap * (serCountC - 1)) / serCountC);
+
+          var svgBodyC = '';
+          for (var gtc = 0; gtc <= 4; gtc++) {
+            var tvc = yMinC + (ySpanC * gtc) / 4;
+            var tyc = valToYC(tvc);
+            svgBodyC += '<line x1="' + pLeftC + '" y1="' + tyc.toFixed(1) + '" x2="' + (svgWC - pRightC) + '" y2="' + tyc.toFixed(1) + '" stroke="' + (gtc === 0 ? '#94a3b8' : '#e2e8f0') + '" stroke-width="' + (gtc === 0 ? '1.2' : '1') + '"' + (gtc === 0 ? '' : ' stroke-dasharray="3 3"') + ' />';
+            svgBodyC += '<text x="' + (pLeftC - 6) + '" y="' + (tyc + 3.5).toFixed(1) + '" text-anchor="end" font-size="10" fill="#64748b" font-family="ui-monospace,monospace">' + esc(formatChartNum(Number(tvc.toFixed(2)))) + '</text>';
+          }
+          for (var ciC = 0; ciC < catCountC; ciC++) {
+            var gCenter = pLeftC + groupW * (ciC + 0.5);
+            var startX = gCenter - innerGW / 2;
+            var shortCC = categories[ciC].length > 18 ? categories[ciC].slice(0, 17) + '…' : categories[ciC];
+            for (var siC = 0; siC < serCountC; siC++) {
+              var sC = series[siC];
+              var vC = sC.values[ciC];
+              if (typeof vC !== 'number' || !isFinite(vC)) continue;
+              var bx = startX + siC * (barW + barGap);
+              var by = vC >= 0 ? valToYC(vC) : zeroYC;
+              var bh = Math.max(2, Math.abs(valToYC(vC) - zeroYC));
+              var bLbl = formatChartNum(vC, sC.displayValues && sC.displayValues[ciC]);
+              svgBodyC += '<rect x="' + bx.toFixed(1) + '" y="' + by.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="3" fill="' + esc(sC.color) + '" opacity="0.92" />';
+              svgBodyC += '<text x="' + (bx + barW / 2).toFixed(1) + '" y="' + (vC >= 0 ? Math.max(12, by - 4) : (by + bh + 11)).toFixed(1) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1e293b" font-family="ui-monospace,monospace">' + esc(bLbl) + '</text>';
+            }
+            svgBodyC += '<text x="' + gCenter.toFixed(1) + '" y="' + (svgHC - pBotC + 16) + '" text-anchor="middle" font-size="10.5" font-weight="600" fill="#334155">' + esc(shortCC) + '</text>';
+          }
+          html += '<div class="data-table-wrap"><svg viewBox="0 0 ' + svgWC + ' ' + svgHC + '" style="width:100%;height:auto;display:block;' + (catCountC >= 5 ? 'min-width:' + svgWC + 'px;' : '') + '" role="img">' + svgBodyC + '</svg></div>';
+        }
+
+        // Hidden toggleable raw data table
+        html += '<div id="' + rawTblId + '" style="display:none;margin-top:10px;" class="data-table-wrap"><table class="data-table"><thead><tr><th style="text-align:left;">Danh mục</th>';
+        for (var rs = 0; rs < series.length; rs++) {
+          html += '<th>' + esc(series[rs].name) + '</th>';
+        }
+        html += '</tr></thead><tbody>';
+        for (var rc = 0; rc < categories.length; rc++) {
+          html += '<tr class="' + (rc % 2 === 1 ? 'zebra' : '') + '"><td style="text-align:left;font-weight:700;">' + esc(categories[rc]) + '</td>';
+          for (var rs2 = 0; rs2 < series.length; rs2++) {
+            html += '<td style="text-align:center;font-family:ui-monospace,monospace;">' + esc(formatChartNum(series[rs2].values[rc], series[rs2].displayValues && series[rs2].displayValues[rc])) + (unit ? ' ' + esc(unit) : '') + '</td>';
+          }
+          html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+
+        html += '</div>';
+        if (ch.source || ch.note) {
+          html += '<div class="doc-table-footer">';
+          if (ch.source) html += '<div style="text-align:right;font-weight:600;">' + esc(ch.source) + '</div>';
+          if (ch.note) html += '<div>' + esc(ch.note) + '</div>';
+          html += '</div>';
+        }
+        html += '</div>';
+        return html;
+      }
+
+      function renderItemMediaHtml(item, altPrefix) {
+        if (!item) return '';
+        var out = '';
+        out += renderItemImagesHtml(item, altPrefix);
+        var charts = [];
+        if (item.chartData) charts.push(item.chartData);
+        if (Array.isArray(item.extraCharts)) {
+          for (var ci = 0; ci < item.extraCharts.length; ci++) charts.push(item.extraCharts[ci]);
+        }
+        for (var c = 0; c < charts.length; c++) {
+          out += renderStructuredChartHtml(charts[c]);
+        }
+        var tables = [];
+        if (item.tableData) tables.push(item.tableData);
+        if (Array.isArray(item.extraTables)) {
+          for (var ti = 0; ti < item.extraTables.length; ti++) tables.push(item.extraTables[ti]);
+        }
+        for (var t = 0; t < tables.length; t++) {
+          out += renderStructuredTableHtml(tables[t]);
+        }
+        return out;
+      }
+
+      function isMarkdownSeparatorLine(line) {
+        var cleaned = line.replace(/\\|/g, '').replace(/\\s+/g, '');
+        return cleaned.length > 0 && /^[:\\-]+$/.test(cleaned);
+      }
+
+      function renderRichTextBlock(rawText, altPrefix) {
+        var lines = String(rawText || '').replace(/\\r\\n/g, '\\n').split('\\n');
+        var htmlParts = [];
+        var pipeLines = [];
+        var tabLines = [];
+
+        function flushPipeTable() {
+          if (pipeLines.length === 0) return;
+          var parsedRows = [];
+          for (var r = 0; r < pipeLines.length; r++) {
+            if (isMarkdownSeparatorLine(pipeLines[r])) continue;
+            var rawCells = pipeLines[r].replace(/^\\|/, '').replace(/\\|$/, '').split('|');
+            var cells = rawCells.map(function(c) { return c.trim(); });
+            if (cells.some(function(c) { return c.length > 0; })) {
+              parsedRows.push(cells);
+            }
+          }
+          if (parsedRows.length > 0) {
+            htmlParts.push(renderStructuredTableHtml({
+              headers: parsedRows[0],
+              rows: parsedRows.slice(1)
+            }));
+          }
+          pipeLines = [];
+        }
+
+        function flushTabTable() {
+          if (tabLines.length === 0) return;
+          if (tabLines.length === 1) {
+            htmlParts.push('<p style="margin:0 0 6px;">' + esc(tabLines[0]) + '</p>');
+          } else {
+            var parsedRows = tabLines.map(function(ln) {
+              return ln.split('\\t').map(function(c) { return c.trim(); });
+            });
+            htmlParts.push(renderStructuredTableHtml({
+              headers: parsedRows[0],
+              rows: parsedRows.slice(1)
+            }));
+          }
+          tabLines = [];
         }
 
         for (var i = 0; i < lines.length; i++) {
-          var line = lines[i].trim();
-          if (!line) continue;
-          if (line.indexOf('|') !== -1) {
-            tableLines.push(line);
+          var rawLine = lines[i];
+          var line = rawLine.trim();
+          if (!line) {
+            flushPipeTable();
+            flushTabTable();
+            continue;
+          }
+
+          var imgMatch = line.match(/^\\[\\[IMG:([^\\]]+)\\]\\]$/);
+          if (imgMatch && exam.rawDocumentImages && exam.rawDocumentImages[imgMatch[1]]) {
+            flushPipeTable();
+            flushTabTable();
+            htmlParts.push(renderImagesListHtml([exam.rawDocumentImages[imgMatch[1]]], altPrefix || 'Hình minh họa'));
+            continue;
+          }
+          var tblMatch = line.match(/^\\[\\[TBL:([^\\]]+)\\]\\]$/);
+          if (tblMatch && exam.rawDocumentTables && exam.rawDocumentTables[tblMatch[1]]) {
+            flushPipeTable();
+            flushTabTable();
+            htmlParts.push(renderStructuredTableHtml(exam.rawDocumentTables[tblMatch[1]]));
+            continue;
+          }
+          var chMatch = line.match(/^\\[\\[CHART:([^\\]]+)\\]\\]$/);
+          if (chMatch && exam.rawDocumentCharts && exam.rawDocumentCharts[chMatch[1]]) {
+            flushPipeTable();
+            flushTabTable();
+            htmlParts.push(renderStructuredChartHtml(exam.rawDocumentCharts[chMatch[1]]));
+            continue;
+          }
+
+          if (line.indexOf('|') !== -1 && (line.split('|').length >= 3 || isMarkdownSeparatorLine(line))) {
+            flushTabTable();
+            pipeLines.push(line);
+          } else if (rawLine.indexOf('\\t') !== -1 && rawLine.split('\\t').length >= 2) {
+            flushPipeTable();
+            tabLines.push(rawLine);
           } else {
-            flushTable();
+            flushPipeTable();
+            flushTabTable();
             htmlParts.push('<p style="margin:0 0 6px;">' + esc(line) + '</p>');
           }
         }
-        flushTable();
+        flushPipeTable();
+        flushTabTable();
         return htmlParts.join('');
       }
 
@@ -7234,7 +8020,7 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
           } else if (chosen) {
             cls += ' done';
           }
-          html += '<button type="button" class="' + cls + '" onclick="scrollToQuestion(\\'q-p1-' + q.id + '\\')">' + q.number + '</button>';
+          html += '<button type="button" class="' + cls + '" onclick="scrollToQuestion(\\'q-p1-' + esc(q.id) + '\\')">' + q.number + '</button>';
         }
         for (var j = 0; j < exam.partII.length; j++) {
           var tf = exam.partII[j];
@@ -7245,7 +8031,13 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
           });
           var cls2 = 'palette-btn';
           if (doneCount === 4) cls2 += ' done';
-          html += '<button type="button" class="' + cls2 + '" style="width:auto;padding:0 8px;" onclick="scrollToQuestion(\\'q-p2-' + tf.id + '\\')">Đ/S ' + tf.number + ' (' + doneCount + '/4)</button>';
+          html += '<button type="button" class="' + cls2 + '" style="width:auto;padding:0 8px;" onclick="scrollToQuestion(\\'q-p2-' + esc(tf.id) + '\\')">Đ/S ' + tf.number + ' (' + doneCount + '/4)</button>';
+        }
+        for (var m = 0; m < exam.partIII.length; m++) {
+          var sa = exam.partIII[m];
+          var hasVal = String(answersPartIII[sa.id] || '').trim().length > 0;
+          var cls3 = 'palette-btn' + (hasVal ? ' done' : '');
+          html += '<button type="button" class="' + cls3 + '" style="width:auto;padding:0 8px;" onclick="scrollToQuestion(\\'q-p3-' + esc(sa.id) + '\\')">P3-' + (sa.originalNumber || sa.number) + '</button>';
         }
         document.getElementById('paletteContainer').innerHTML = html;
       }
@@ -7260,7 +8052,14 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
             if (m[k] !== null && m[k] !== undefined) p2Done++;
           });
         }
+        var p3Done = 0;
+        for (var n = 0; n < exam.partIII.length; n++) {
+          if (String(answersPartIII[exam.partIII[n].id] || '').trim().length > 0) p3Done++;
+        }
         var label = 'Đã làm: ' + p1Done + '/' + exam.partI.length + ' câu TN · ' + p2Done + '/' + (exam.partII.length * 4) + ' ý Đ/S';
+        if (exam.partIII.length > 0) {
+          label += ' · ' + p3Done + '/' + exam.partIII.length + ' Phần III';
+        }
         document.getElementById('progressText').textContent = label;
         document.getElementById('bottomStatusTitle').textContent = label;
         renderPalette();
@@ -7269,68 +8068,98 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
       function renderQuestions() {
         var html = '';
 
-        html += '<div class="section-banner">';
-        html += '<h2>PHẦN I. TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN (' + exam.partI.length + ' CÂU)</h2>';
-        html += '<p>Thí sinh trả lời từ câu 1 đến câu ' + exam.partI.length + '. Mỗi câu hỏi thí sinh chỉ chọn một phương án đúng nhất (A, B, C hoặc D).</p>';
-        html += '</div>';
-
-        var letters = ['A', 'B', 'C', 'D'];
-        for (var i = 0; i < exam.partI.length; i++) {
-          var q = exam.partI[i];
-          var selected = answersPartI[q.id] || null;
-          html += '<div class="card" id="q-p1-' + q.id + '">';
-          html += '<div class="q-header">';
-          html += '<span class="q-num">Câu ' + q.number + '</span>';
-          if (q.topic) {
-            html += '<span class="q-topic">' + esc(q.topic) + (q.cognitiveLevel ? ' · ' + esc(q.cognitiveLevel) : '') + '</span>';
-          }
+        if (exam.partI.length === 0 && exam.partII.length === 0 && exam.partIII.length === 0 && exam.rawDocumentText) {
+          html += '<div class="section-banner">';
+          html += '<h2>NỘI DUNG TÀI LIỆU ĐƯỢC GIAO</h2>';
+          html += '<p>Tài liệu gốc kèm đầy đủ hình ảnh, bảng biểu và biểu đồ.</p>';
           html += '</div>';
-          html += '<div class="q-stem">' + esc(q.question) + '</div>';
+          html += '<div class="card">' + renderRichTextBlock(exam.rawDocumentText, 'Hình tài liệu') + '</div>';
+          document.getElementById('questionsRoot').innerHTML = html;
+          updateProgressCounters();
+          return;
+        }
 
-          if (Array.isArray(q.subStatements) && q.subStatements.length > 0) {
-            html += '<div class="sub-statements">';
-            for (var s = 0; s < q.subStatements.length; s++) {
-              html += '<div>' + esc(q.subStatements[s]) + '</div>';
+        if (exam.partI.length > 0) {
+          html += '<div class="section-banner">';
+          html += '<h2>PHẦN I. TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN (' + exam.partI.length + ' CÂU)</h2>';
+          html += '<p>Thí sinh trả lời từ câu 1 đến câu ' + exam.partI.length + '. Mỗi câu hỏi thí sinh chỉ chọn một phương án đúng nhất (A, B, C hoặc D).</p>';
+          html += '</div>';
+
+          var letters = ['A', 'B', 'C', 'D'];
+          for (var i = 0; i < exam.partI.length; i++) {
+            var q = exam.partI[i];
+            var selected = answersPartI[q.id] || null;
+            html += '<div class="card" id="q-p1-' + esc(q.id) + '">';
+            html += '<div class="q-header">';
+            html += '<span class="q-num">Câu ' + q.number + '</span>';
+            if (q.topic) {
+              html += '<span class="q-topic">' + esc(q.topic) + (q.cognitiveLevel ? ' · ' + esc(q.cognitiveLevel) : '') + '</span>';
             }
             html += '</div>';
-          }
+            html += '<div class="q-stem">' + renderRichTextBlock(q.question, 'Hình Câu ' + q.number) + '</div>';
 
-          if (q.questionFooter) {
-            html += '<div class="q-stem" style="margin-top:6px;">' + esc(q.questionFooter) + '</div>';
-          }
+            // Hình ảnh minh họa của Câu hỏi Phần I
+            html += renderItemImagesHtml(q, 'Hình minh họa Câu ' + q.number);
 
-          html += '<div class="options-list">';
-          for (var optIdx = 0; optIdx < letters.length; optIdx++) {
-            var letter = letters[optIdx];
-            var optText = (q.options && q.options[letter]) || '';
-            var btnClass = 'opt-btn';
-            if (isSubmitted) {
-              if (letter === q.correctAnswer && config.showSolutionsAfterSubmit !== false) {
-                btnClass += ' correct-ans';
-              } else if (selected === letter && letter !== q.correctAnswer) {
-                btnClass += ' wrong-ans';
+            if (Array.isArray(q.subStatements) && q.subStatements.length > 0) {
+              html += '<div class="sub-statements">';
+              for (var s = 0; s < q.subStatements.length; s++) {
+                html += '<div>' + esc(q.subStatements[s]) + '</div>';
               }
-            } else if (selected === letter) {
-              btnClass += ' selected';
+              html += '</div>';
             }
-            html += '<button type="button" class="' + btnClass + '" onclick="choosePartI(\\'' + q.id + '\\', \\'' + letter + '\\')">';
-            html += '<span class="opt-letter">' + letter + '</span>';
-            html += '<span style="flex:1;">' + esc(optText) + '</span>';
-            html += '</button>';
-          }
-          html += '</div>';
 
-          if (isSubmitted && config.showSolutionsAfterSubmit !== false) {
-            var isRight = selected === q.correctAnswer;
-            html += '<div class="explanation-box">';
-            html += '<div><strong>' + (isRight ? '✅ Chính xác!' : '❌ Chưa đúng (Bạn chọn: ' + (selected || 'Bỏ trống') + ')') + ' — Đáp án đúng: ' + q.correctAnswer + '</strong></div>';
-            if (q.explanation) {
-              html += '<div style="margin-top:4px;">💡 <strong>Giải thích:</strong> ' + esc(q.explanation) + '</div>';
+            // Biểu đồ & Bảng biểu cấu trúc của Câu hỏi Phần I
+            var p1Charts = [];
+            if (q.chartData) p1Charts.push(q.chartData);
+            if (Array.isArray(q.extraCharts)) p1Charts = p1Charts.concat(q.extraCharts);
+            for (var c1 = 0; c1 < p1Charts.length; c1++) {
+              html += renderStructuredChartHtml(p1Charts[c1]);
+            }
+            var p1Tables = [];
+            if (q.tableData) p1Tables.push(q.tableData);
+            if (Array.isArray(q.extraTables)) p1Tables = p1Tables.concat(q.extraTables);
+            for (var t1 = 0; t1 < p1Tables.length; t1++) {
+              html += renderStructuredTableHtml(p1Tables[t1]);
+            }
+
+            if (q.questionFooter) {
+              html += '<div class="q-stem" style="margin-top:6px;">' + esc(q.questionFooter) + '</div>';
+            }
+
+            html += '<div class="options-list">';
+            for (var optIdx = 0; optIdx < letters.length; optIdx++) {
+              var letter = letters[optIdx];
+              var optText = (q.options && q.options[letter]) || '';
+              var btnClass = 'opt-btn';
+              if (isSubmitted) {
+                if (letter === q.correctAnswer && config.showSolutionsAfterSubmit !== false) {
+                  btnClass += ' correct-ans';
+                } else if (selected === letter && letter !== q.correctAnswer) {
+                  btnClass += ' wrong-ans';
+                }
+              } else if (selected === letter) {
+                btnClass += ' selected';
+              }
+              html += '<button type="button" class="' + btnClass + '" onclick="choosePartI(\\'' + esc(q.id) + '\\', \\'' + letter + '\\')">';
+              html += '<span class="opt-letter">' + letter + '</span>';
+              html += '<span style="flex:1;">' + esc(optText) + '</span>';
+              html += '</button>';
             }
             html += '</div>';
-          }
 
-          html += '</div>';
+            if (isSubmitted && config.showSolutionsAfterSubmit !== false) {
+              var isRight = selected === q.correctAnswer;
+              html += '<div class="explanation-box">';
+              html += '<div><strong>' + (isRight ? '✅ Chính xác!' : '❌ Chưa đúng (Bạn chọn: ' + (selected || 'Bỏ trống') + ')') + ' — Đáp án đúng: ' + esc(q.correctAnswer) + '</strong></div>';
+              if (q.explanation) {
+                html += '<div style="margin-top:4px;">💡 <strong>Giải thích:</strong> ' + esc(q.explanation) + '</div>';
+              }
+              html += '</div>';
+            }
+
+            html += '</div>';
+          }
         }
 
         if (Array.isArray(exam.partII) && exam.partII.length > 0) {
@@ -7342,7 +8171,7 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
           for (var j = 0; j < exam.partII.length; j++) {
             var tf = exam.partII[j];
             var stMap = answersPartII[tf.id] || {};
-            html += '<div class="card" id="q-p2-' + tf.id + '">';
+            html += '<div class="card" id="q-p2-' + esc(tf.id) + '">';
             html += '<div class="q-header">';
             html += '<span class="q-num">Câu ' + tf.number + ' (Đúng/Sai)</span>';
             if (tf.topic) {
@@ -7354,21 +8183,36 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
             if (tf.scenarioTitle) {
               html += '<div class="scenario-title">📋 ' + esc(tf.scenarioTitle) + '</div>';
             }
-            html += renderScenarioContent(tf.scenario);
+            html += renderRichTextBlock(tf.scenario, 'Hình Tình huống Câu ' + tf.number);
+            // Hình ảnh, Bảng biểu và Biểu đồ của Phần II
+            html += renderItemImagesHtml(tf, 'Hình minh họa Phần II Câu ' + tf.number);
+            var p2Tables = [];
+            if (tf.tableData) p2Tables.push(tf.tableData);
+            if (Array.isArray(tf.extraTables)) p2Tables = p2Tables.concat(tf.extraTables);
+            for (var t2 = 0; t2 < p2Tables.length; t2++) {
+              html += renderStructuredTableHtml(p2Tables[t2]);
+            }
+            var p2Charts = [];
+            if (tf.chartData) p2Charts.push(tf.chartData);
+            if (Array.isArray(tf.extraCharts)) p2Charts = p2Charts.concat(tf.extraCharts);
+            for (var c2 = 0; c2 < p2Charts.length; c2++) {
+              html += renderStructuredChartHtml(p2Charts[c2]);
+            }
             if (tf.citation) {
               html += '<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;">Nguồn: ' + esc(tf.citation) + '</div>';
             }
             html += '</div>';
 
-            for (var k = 0; k < tf.statements.length; k++) {
-              var stmt = tf.statements[k];
+            var tfStmts = Array.isArray(tf.statements) ? tf.statements : [];
+            for (var k = 0; k < tfStmts.length; k++) {
+              var stmt = tfStmts[k];
               var userVal = stMap[stmt.subId];
               var hasAnswered = userVal === true || userVal === false;
               html += '<div class="tf-row ' + (hasAnswered ? 'answered' : '') + '">';
               html += '<div class="tf-text"><strong>' + esc(stmt.subId) + ')</strong> ' + esc(stmt.text) + '</div>';
               html += '<div class="tf-actions">';
-              html += '<button type="button" class="tf-btn ' + (userVal === true ? 'selected-true' : '') + '" onclick="choosePartII(\\'' + tf.id + '\\', \\'' + stmt.subId + '\\', true)">✓ Đúng</button>';
-              html += '<button type="button" class="tf-btn ' + (userVal === false ? 'selected-false' : '') + '" onclick="choosePartII(\\'' + tf.id + '\\', \\'' + stmt.subId + '\\', false)">✗ Sai</button>';
+              html += '<button type="button" class="tf-btn ' + (userVal === true ? 'selected-true' : '') + '" onclick="choosePartII(\\'' + esc(tf.id) + '\\', \\'' + esc(stmt.subId) + '\\', true)">✓ Đúng</button>';
+              html += '<button type="button" class="tf-btn ' + (userVal === false ? 'selected-false' : '') + '" onclick="choosePartII(\\'' + esc(tf.id) + '\\', \\'' + esc(stmt.subId) + '\\', false)">✗ Sai</button>';
               html += '</div>';
 
               if (isSubmitted && config.showSolutionsAfterSubmit !== false) {
@@ -7384,6 +8228,41 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
               html += '</div>';
             }
 
+            html += '</div>';
+          }
+        }
+
+        if (Array.isArray(exam.partIII) && exam.partIII.length > 0) {
+          html += '<div class="section-banner" style="background:#0369a1;">';
+          html += '<h2>PHẦN III. TRẢ LỜI NGẮN / TỰ LUẬN (' + exam.partIII.length + ' CÂU)</h2>';
+          html += '<p>Thí sinh điền đáp án ngắn hoặc lời giải vào ô bên dưới mỗi câu hỏi.</p>';
+          html += '</div>';
+
+          for (var m = 0; m < exam.partIII.length; m++) {
+            var saQ = exam.partIII[m];
+            var saVal = answersPartIII[saQ.id] || '';
+            html += '<div class="card" id="q-p3-' + esc(saQ.id) + '">';
+            html += '<div class="q-header">';
+            html += '<span class="q-num" style="background:#0284c7;">Câu ' + (saQ.originalNumber || saQ.number) + ' (Phần III)</span>';
+            html += '<span class="q-topic">Trả lời ngắn / Tự luận</span>';
+            html += '</div>';
+            html += '<div class="q-stem">' + renderRichTextBlock(saQ.question, 'Hình Phần III Câu ' + saQ.number) + '</div>';
+            html += renderItemMediaHtml(saQ, 'Hình Phần III Câu ' + saQ.number);
+            html += '<div style="margin-top:8px;">' +
+              '<label class="field-label">Câu trả lời của bạn:</label>' +
+              '<textarea class="sa-textarea" ' + (isSubmitted ? 'disabled ' : '') + 'placeholder="Nhập đáp án hoặc ghi chú lời giải..." oninput="updatePartIIIAnswer(\\'' + esc(saQ.id) + '\\', this.value)">' + esc(saVal) + '</textarea>' +
+            '</div>';
+
+            if (isSubmitted && config.showSolutionsAfterSubmit !== false && (saQ.expectedAnswer || saQ.explanation)) {
+              html += '<div class="explanation-box">';
+              if (saQ.expectedAnswer) {
+                html += '<div><strong>📌 Đáp án gợi ý:</strong> ' + esc(saQ.expectedAnswer) + '</div>';
+              }
+              if (saQ.explanation) {
+                html += '<div style="margin-top:4px;">💡 ' + esc(saQ.explanation) + '</div>';
+              }
+              html += '</div>';
+            }
             html += '</div>';
           }
         }
@@ -7421,6 +8300,12 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
         renderQuestions();
       };
 
+      window.updatePartIIIAnswer = function(qId, val) {
+        if (isSubmitted) return;
+        answersPartIII[qId] = val;
+        updateProgressCounters();
+      };
+
       window.openSubmitModal = function() {
         if (isSubmitted) return;
         var nameInput = document.getElementById('studentNameInput');
@@ -7442,12 +8327,19 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
             if (m[k] !== null && m[k] !== undefined) p2Done++;
           });
         }
+        var p3Done = 0;
+        for (var n = 0; n < exam.partIII.length; n++) {
+          if (String(answersPartIII[exam.partIII[n].id] || '').trim().length > 0) p3Done++;
+        }
         var totalP1 = exam.partI.length;
         var totalP2 = exam.partII.length * 4;
+        var totalP3 = exam.partIII.length;
         var msg = 'Học sinh: ' + nameVal + ' (' + (document.getElementById('studentClassInput').value || 'Ôn THPT') + '). ';
-        msg += 'Bạn đã hoàn thành ' + p1Done + '/' + totalP1 + ' câu Phần I và ' + p2Done + '/' + totalP2 + ' ý Đúng/Sai Phần II.';
-        if (p1Done < totalP1 || p2Done < totalP2) {
-          msg += ' Vẫn còn câu hỏi chưa chọn đáp án, bạn có chắc chắn muốn nộp bài ngay không?';
+        msg += 'Bạn đã hoàn thành ' + p1Done + '/' + totalP1 + ' câu Phần I và ' + p2Done + '/' + totalP2 + ' ý Đúng/Sai Phần II';
+        if (totalP3 > 0) msg += ' và ' + p3Done + '/' + totalP3 + ' câu Phần III';
+        msg += '.';
+        if (p1Done < totalP1 || p2Done < totalP2 || p3Done < totalP3) {
+          msg += ' Vẫn còn câu hỏi chưa hoàn thành, bạn có chắc chắn muốn nộp bài ngay không?';
         }
         document.getElementById('modalSummaryText').textContent = msg;
         document.getElementById('submitModal').classList.add('open');
@@ -7727,6 +8619,7 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
             examPaper: {
               partI: answersPartI,
               partII: answersPartII,
+              partIII: answersPartIII,
               partIDetails: partIDetails,
               partIIDetails: partIIDetails
             }
@@ -7827,7 +8720,8 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
 </html>`;
 }
 
-function handleStudentExamHtmlRequest(req: Request, res: Response, next: NextFunction) {
+async function handleStudentExamHtmlRequest(req: Request, res: Response, next: NextFunction) {
+  try {
   if (req.method !== 'GET') return next();
 
   const pathMatch = req.path.match(/^\/(?:thi|s|exam)\/([^/?#]+)/i);
@@ -7845,6 +8739,15 @@ function handleStudentExamHtmlRequest(req: Request, res: Response, next: NextFun
     return next();
   }
 
+  const hasValidExamPayload = (ex: any): boolean =>
+    Boolean(
+      ex &&
+        (Array.isArray(ex.partI) ||
+          Array.isArray(ex.partII) ||
+          Array.isArray(ex.partIII) ||
+          Boolean(ex.rawDocumentText))
+    );
+
   const qTeacher = String(req.query.teacher || req.query.t || '').trim();
   const candidateKeys = [qExamId, qCode, pathKey].filter(Boolean);
   let storedRecord: any = null;
@@ -7855,9 +8758,24 @@ function handleStudentExamHtmlRequest(req: Request, res: Response, next: NextFun
         : null) ||
       sharedAssignmentsMap.get(key) ||
       sharedAssignmentsMap.get(key.toLowerCase());
-    if (found && found.exam && Array.isArray(found.exam.partI)) {
+    if (found && hasValidExamPayload(found.exam)) {
       storedRecord = found;
       break;
+    }
+  }
+
+  // Fallback truy vấn Cloud SQL / peer instance nếu đề giao QR chưa có trong bộ nhớ cục bộ
+  if (!storedRecord && candidateKeys.length > 0) {
+    for (const key of candidateKeys) {
+      const remoteFound = await lookupAssignmentFromCloudSqlOrPeers(
+        key,
+        qTeacher.toLowerCase(),
+        req
+      );
+      if (remoteFound && hasValidExamPayload(remoteFound.exam)) {
+        storedRecord = remoteFound;
+        break;
+      }
     }
   }
 
@@ -7865,8 +8783,10 @@ function handleStudentExamHtmlRequest(req: Request, res: Response, next: NextFun
     const latest =
       (qTeacher
         ? sharedAssignmentsMap.get(`teacher_latest__${qTeacher.toLowerCase()}`)
-        : null) || sharedAssignmentsMap.get('__latest_active__');
-    if (latest && latest.exam && Array.isArray(latest.exam.partI)) {
+        : null) ||
+      sharedAssignmentsMap.get('__latest_active__') ||
+      (await lookupAssignmentFromCloudSqlOrPeers('active', qTeacher.toLowerCase(), req));
+    if (latest && hasValidExamPayload(latest.exam)) {
       storedRecord = latest;
     }
   }
@@ -7879,7 +8799,7 @@ function handleStudentExamHtmlRequest(req: Request, res: Response, next: NextFun
           String(e?.id || '').toLowerCase() === key.toLowerCase() ||
           String(e?.code || '').toLowerCase() === key.toLowerCase()
       );
-      if (customFound && Array.isArray(customFound.partI)) {
+      if (hasValidExamPayload(customFound)) {
         resolvedExam = customFound;
         break;
       }
@@ -7888,7 +8808,7 @@ function handleStudentExamHtmlRequest(req: Request, res: Response, next: NextFun
           String(e?.id || '').toLowerCase() === key.toLowerCase() ||
           String(e?.code || '').toLowerCase() === key.toLowerCase()
       );
-      if (uploadedFound && Array.isArray(uploadedFound.partI)) {
+      if (hasValidExamPayload(uploadedFound)) {
         resolvedExam = uploadedFound;
         break;
       }
@@ -7977,6 +8897,9 @@ function handleStudentExamHtmlRequest(req: Request, res: Response, next: NextFun
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   return res.status(200).send(html);
+  } catch (err) {
+    return next(err);
+  }
 }
 
 app.use(handleStudentExamHtmlRequest);
