@@ -1,0 +1,946 @@
+[
+  {
+    "id": 1794968522071,
+    "username": "nthien",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Ngô Thị Hiền",
+    "email": "ngothihien@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-18T02:22:02.071Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-18",
+    "expires_at": "2026-11-25",
+    "aliases": [
+      "nthien",
+      "ngo thi hien",
+      "ngothihien"
+    ]
+  },
+  {
+    "id": 1795163859429,
+    "username": "ntmuoi",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Nguyễn Thị Mười",
+    "email": "nguyenthimuoi@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T08:37:39.429Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-20",
+    "expires_at": "2026-11-27",
+    "aliases": [
+      "ntmuoi",
+      "nguyen thi muoi",
+      "nguyenthimuoi"
+    ]
+  },
+  {
+    "id": 1794987128405,
+    "username": "tranduyen",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Trần Duyên",
+    "email": "tranduyen@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-18T07:32:08.405Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-18",
+    "expires_at": "2026-11-25",
+    "aliases": [
+      "tranduyen",
+      "tran duyen"
+    ]
+  },
+  {
+    "id": 1794978187601,
+    "username": "ltkloan",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Lê Thị Kim Loan",
+    "email": "lethikimloan@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-18T05:03:07.601Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-18",
+    "expires_at": "2026-11-25",
+    "aliases": [
+      "ltkloan",
+      "le thi kim loan",
+      "lethikimloan"
+    ]
+  },
+  {
+    "id": 1794985405775,
+    "username": "ngochong",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Ngọc Hồng",
+    "email": "ngochong@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-18T07:03:25.775Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-18",
+    "expires_at": "2026-11-25",
+    "aliases": [
+      "ngochong",
+      "ngoc hong"
+    ]
+  },
+  {
+    "id": 1795137593745,
+    "username": "nthai",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Nguyễn Thanh Hải",
+    "email": "nguyenthanhhai@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T01:19:53.745Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-20",
+    "expires_at": "2026-11-27",
+    "aliases": [
+      "nthai",
+      "nguyen thanh hai",
+      "nguyenthanhhai"
+    ]
+  },
+  {
+    "id": 1795137157938,
+    "username": "quangdao",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Quang Đạo",
+    "email": "quangdao@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T01:12:37.938Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-20",
+    "expires_at": "2026-11-27",
+    "aliases": [
+      "quangdao",
+      "quang dao"
+    ]
+  },
+  {
+    "id": 1795215141602,
+    "username": "dnmlien",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Đinh Ngô Mỹ Liên",
+    "email": "dinhngomylien@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T22:52:21.602Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-21",
+    "expires_at": "2026-11-28",
+    "aliases": [
+      "dnmlien",
+      "dinh ngo my lien",
+      "dinhngomylien"
+    ]
+  },
+  {
+    "id": 1795140046072,
+    "username": "thuylinh",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Thuỳ Linh",
+    "email": "thuylinh@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T02:00:46.072Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-20",
+    "expires_at": "2026-11-27",
+    "aliases": [
+      "thuylinh",
+      "thuy linh"
+    ]
+  },
+  {
+    "id": 1795136646793,
+    "username": "minhtien",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Minh Tiến",
+    "email": "minhtien@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T01:04:06.793Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-20",
+    "expires_at": "2026-11-27",
+    "aliases": [
+      "minhtien",
+      "minh tien"
+    ]
+  },
+  {
+    "id": 1795137426827,
+    "username": "myhang",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Mỹ Hằng",
+    "email": "myhang@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T01:17:06.827Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-20",
+    "expires_at": "2026-11-27",
+    "aliases": [
+      "myhang",
+      "my hang"
+    ]
+  },
+  {
+    "id": 1794989113391,
+    "username": "nthoang",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Nguyễn Thị Hoàng",
+    "email": "nguyenthihoang@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-18T08:05:13.391Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-18",
+    "expires_at": "2026-11-25",
+    "aliases": [
+      "nthoang",
+      "nguyen thi hoang",
+      "nguyenthihoang"
+    ]
+  },
+  {
+    "id": 1794983599049,
+    "username": "buichien",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Bùi Chien",
+    "email": "buichien@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-18T06:33:19.049Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-18",
+    "expires_at": "2026-11-25",
+    "aliases": [
+      "buichien",
+      "bui chien"
+    ]
+  },
+  {
+    "id": 1795139929541,
+    "username": "ngantran",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Ngân Trần",
+    "email": "ngantran@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T01:58:49.541Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-20",
+    "expires_at": "2026-11-27",
+    "aliases": [
+      "ngantran",
+      "ngan tran"
+    ]
+  },
+  {
+    "id": 1795164308619,
+    "username": "ntmthu",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Nguyễn Thị Mộng Thu",
+    "email": "nguyenthimongthu@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T08:45:08.619Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-20",
+    "expires_at": "2026-11-27",
+    "aliases": [
+      "ntmthu",
+      "nguyen thi mong thu",
+      "nguyenthimongthu"
+    ]
+  },
+  {
+    "id": 1795163610449,
+    "username": "nguyenhang",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Nguyễn Hằng",
+    "email": "nguyenhang@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-20T08:33:30.449Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-20",
+    "expires_at": "2026-11-27",
+    "aliases": [
+      "nguyenhang",
+      "nguyen hang"
+    ]
+  },
+  {
+    "id": 1795410802668,
+    "username": "ltle",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Lý Thị Lệ",
+    "email": "lythile@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-23T05:13:22.668Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-23",
+    "expires_at": "2026-11-30",
+    "aliases": [
+      "ltle",
+      "ly thi le",
+      "lythile"
+    ]
+  },
+  {
+    "id": 1794923704507,
+    "username": "nndthu",
+    "password": "hs123",
+    "role": "student",
+    "fullName": "Nguyễn Ngọc Diễm Thu",
+    "email": "nguyenngocdiemthu@truong.edu.vn",
+    "className": "12A1",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-17T13:55:04.507Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-17",
+    "expires_at": "2026-11-24",
+    "aliases": [
+      "nndthu",
+      "nguyen ngoc diem thu",
+      "nguyenngocdiemthu"
+    ]
+  },
+  {
+    "id": 1794016480002,
+    "username": "vanhuu",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Văn Hữu",
+    "email": "vanhuu@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-07T01:55:00.000Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-07",
+    "expires_at": "Vĩnh viễn",
+    "aliases": [
+      "vanhuu",
+      "vanhuu@truong.edu.vn"
+    ]
+  },
+  {
+    "id": 1794016480001,
+    "username": "truongthanhqua",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Trương Thanh Quá",
+    "email": "truongthanhqua@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-07T01:55:00.000Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-07",
+    "expires_at": "2027-11-07",
+    "aliases": [
+      "truongthanhqua",
+      "truong thanh qua"
+    ]
+  },
+  {
+    "id": 1794016426793,
+    "username": "lehang",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Lê Hằng",
+    "email": "lehang@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-07T01:53:46.563Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-07",
+    "expires_at": "Vĩnh viễn",
+    "aliases": []
+  },
+  {
+    "id": 1794016410017,
+    "username": "ledien",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Lê Diến",
+    "email": "ledien@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-07T01:53:31.287Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-07",
+    "expires_at": "Vĩnh viễn",
+    "aliases": []
+  },
+  {
+    "id": 1794012668032,
+    "username": "bona",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Chau Bô Na",
+    "email": "bona@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-06T11:53:14.731Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-06",
+    "expires_at": "2027-11-06",
+    "aliases": []
+  },
+  {
+    "id": 1794012668024,
+    "username": "ltptuyen",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Lê Thị Phượng Tuyến",
+    "email": "ltptuyen@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-06T12:30:14.343Z",
+    "payment_amount": 100000,
+    "start_date": "2026-08-17",
+    "expires_at": "Vĩnh viễn",
+    "aliases": [
+      "ltptuyen",
+      "le thi phuong tuyen",
+      "lethiphuongtuyen"
+    ]
+  },
+  {
+    "id": 1,
+    "username": "admin",
+    "password": "admin123",
+    "role": "admin",
+    "fullName": "Trần Văn Hữu",
+    "email": "admin@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-06T11:50:24.301Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-06",
+    "expires_at": "Vĩnh viễn",
+    "aliases": [
+      "huu",
+      "tranvanhuu",
+      "thayhuu",
+      "tvhuu",
+      "0358016013",
+      "tvhuu.8nn@gmail.com"
+    ]
+  },
+  {
+    "id": 2,
+    "username": "ttbvan",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Trần Thị Bích Vân",
+    "email": "ttbvan@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-06T11:50:24.301Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-06",
+    "expires_at": "Vĩnh viễn",
+    "aliases": [
+      "bichvan",
+      "tranthibichvan",
+      "covan",
+      "van",
+      "ttbvan@gmail.com"
+    ]
+  },
+  {
+    "id": 5,
+    "username": "dluphuong",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Đặng Lê Uyên Phương",
+    "email": "dluphuong@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-06T11:50:24.301Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-06",
+    "expires_at": "Vĩnh viễn",
+    "aliases": [
+      "uyenphuong",
+      "dangleuyenphuong",
+      "cophuong",
+      "phuong",
+      "dluphuong@gmail.com"
+    ]
+  },
+  {
+    "id": 6,
+    "username": "ntmdung",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Nguyễn Thị Mỹ Dung",
+    "email": "ntmdung@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-06T11:50:24.301Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-06",
+    "expires_at": "Vĩnh viễn",
+    "aliases": [
+      "mydung",
+      "nguyenthimydung",
+      "codung",
+      "dung",
+      "ntmdung@gmail.com"
+    ]
+  },
+  {
+    "id": 11,
+    "username": "tdquoc",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Thái Duy Quốc",
+    "email": "tdquoc@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-06T11:50:24.301Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-06",
+    "expires_at": "Vĩnh viễn",
+    "aliases": [
+      "thaiduyquoc",
+      "thayquoc",
+      "quoc",
+      "tdquoc@gmail.com"
+    ]
+  },
+  {
+    "id": 15,
+    "username": "nvduc",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Nguyễn Văn Đức",
+    "email": "nvduc@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-07T01:55:00.000Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-07",
+    "expires_at": "Vĩnh viễn",
+    "aliases": [
+      "nvduc",
+      "nguyenvanduc",
+      "thayduc",
+      "duc",
+      "nvduc@truong.edu.vn",
+      "nvduc@gmail.com"
+    ]
+  },
+  {
+    "id": 1794911445195,
+    "username": "ltptin",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Lâm Thanh Phúc Tín",
+    "email": "lamthanhphuctin@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-17T10:30:45.195Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-23",
+    "expires_at": "2027-11-23",
+    "aliases": [
+      "ltptin",
+      "lam thanh phuc tin",
+      "lamthanhphuctin"
+    ]
+  },
+  {
+    "id": 1794284663651,
+    "username": "thanhthanh",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Thanh Thanh",
+    "email": "thanhthanh@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-10T04:24:23.651Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-10",
+    "expires_at": "2027-11-10",
+    "aliases": [
+      "thanhthanh",
+      "thanh thanh"
+    ]
+  },
+  {
+    "id": 1794574690388,
+    "username": "ptan",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Phan Thúy An",
+    "email": "ptan@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-13T12:58:10.388Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-13",
+    "expires_at": "2027-11-13",
+    "aliases": [
+      "ptan",
+      "phan thuy an",
+      "phanthuyan"
+    ]
+  },
+  {
+    "id": 1794645997706,
+    "username": "nttdung",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Nguyễn Thị Thùy Dung",
+    "email": "nguyenthithuydung@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-14T08:46:37.707Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-14",
+    "expires_at": "2027-11-14",
+    "aliases": [
+      "nttdung",
+      "nguyen thi thuy dung",
+      "nguyenthithuydung"
+    ]
+  },
+  {
+    "id": 1794579497302,
+    "username": "renren",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Nèang Rên",
+    "email": "neangren@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-13T14:18:17.302Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-23",
+    "expires_at": "2027-11-23",
+    "aliases": [
+      "renren",
+      "neang ren",
+      "neangren"
+    ]
+  },
+  {
+    "id": 1794132712393,
+    "username": "phanthiphuongthang",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Phan Thị Phương Thắng",
+    "email": "phanthiphuongthang@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-08T10:11:52.393Z",
+    "payment_amount": 200000,
+    "start_date": "2026-02-06",
+    "expires_at": "2027-02-06",
+    "aliases": [
+      "phanthiphuongthang",
+      "phan thi phuong thang"
+    ]
+  },
+  {
+    "id": 1794063297820,
+    "username": "lahuy",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "La Huy",
+    "email": "lahuy@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-07T14:57:29.636Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-07",
+    "expires_at": "2027-11-07",
+    "aliases": [
+      "lahuy",
+      "la huy"
+    ]
+  },
+  {
+    "id": 1794579539288,
+    "username": "tnloan",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Tống Ngọc Loan",
+    "email": "tongngocloan@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-13T14:18:59.288Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-15",
+    "expires_at": "2026-11-22",
+    "aliases": [
+      "tnloan",
+      "tong ngoc loan",
+      "tongngocloan"
+    ]
+  },
+  {
+    "id": 1794038035192,
+    "username": "ltktuyen",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Lê Thị Kim Tuyến",
+    "email": "ltktuyen@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-07T07:53:55.192Z",
+    "payment_amount": 200000,
+    "start_date": "2026-02-01",
+    "expires_at": "2027-02-01",
+    "aliases": [
+      "ltktuyen",
+      "le thi kim tuyen",
+      "lethikimtuyen"
+    ]
+  },
+  {
+    "id": 1794737106519,
+    "username": "dangtoan",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Đặng Toàn",
+    "email": "dangtoan@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-15T10:05:06.519Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-15",
+    "expires_at": "2026-11-22",
+    "aliases": [
+      "dangtoan",
+      "dang toan"
+    ]
+  },
+  {
+    "id": 1794748503157,
+    "username": "ltly",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Lê Thị Lý",
+    "email": "lethily@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-15T13:15:03.157Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-15",
+    "expires_at": "2026-11-22",
+    "aliases": [
+      "ltly",
+      "le thi ly",
+      "lethily"
+    ]
+  },
+  {
+    "id": 1794813647686,
+    "username": "vtthao",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Vũ Thị Thảo",
+    "email": "vuthithao@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-16T07:20:47.686Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-16",
+    "expires_at": "2026-11-23",
+    "aliases": [
+      "vtthao",
+      "vu thi thao",
+      "vuthithao"
+    ]
+  },
+  {
+    "id": 1794813676259,
+    "username": "mailoan",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Phan Thị Mai Loan",
+    "email": "mailoan@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-16T07:21:16.259Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-16",
+    "expires_at": "2027-11-16",
+    "aliases": [
+      "mailoan",
+      "phan thi mai loan",
+      "phanthimailoan"
+    ]
+  },
+  {
+    "id": 1794813742606,
+    "username": "dothoa",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Đỗ Thoa",
+    "email": "dothoa@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-16T07:22:22.606Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-16",
+    "expires_at": "2026-11-23",
+    "aliases": [
+      "dothoa",
+      "do thoa"
+    ]
+  },
+  {
+    "id": 1794103280271,
+    "username": "tdtoan",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Trần Đức Toàn",
+    "email": "tranductoan@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-08T02:01:20.271Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-16",
+    "expires_at": "2026-11-23",
+    "aliases": [
+      "tdtoan",
+      "tran duc toan",
+      "tranductoan"
+    ]
+  },
+  {
+    "id": 1794734335159,
+    "username": "pttnga",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Phạm Thị Tố Nga",
+    "email": "phamthitonga@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-15T09:18:55.159Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-16",
+    "expires_at": "2027-11-16",
+    "aliases": [
+      "pttnga",
+      "pham thi to nga",
+      "phamthitonga"
+    ]
+  },
+  {
+    "id": 1794886924685,
+    "username": "dangnhung",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Đặng Nhung",
+    "email": "dangnhung@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-17T03:42:04.685Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-17",
+    "expires_at": "2026-11-24",
+    "aliases": [
+      "dangnhung",
+      "dang nhung"
+    ]
+  },
+  {
+    "id": 1794886972013,
+    "username": "cthnhung",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Cao Thị Hồng Nhung",
+    "email": "caothihongnhung@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-17T03:42:52.013Z",
+    "payment_amount": 200000,
+    "start_date": "2026-11-17",
+    "expires_at": "2027-11-17",
+    "aliases": [
+      "cthnhung",
+      "cao thi hong nhung",
+      "caothihongnhung"
+    ]
+  }
+]

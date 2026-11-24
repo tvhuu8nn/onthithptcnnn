@@ -1,0 +1,6 @@
+{
+  "name": "Ôn Thi Tốt Nghiệp THPT - Công Nghệ Nông Nghiệp",
+  "description": "Ứng dụng ôn thi tốt nghiệp THPT môn Công nghệ Nông nghiệp theo chuẩn chương trình GDPT 2018 và SGK Kết nối tri thức với cuộc sống. Cấu trúc đề chuẩn: 24 câu trắc nghiệm nhiều lựa chọn và 4 câu đúng sai theo tình huống thực tế.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
