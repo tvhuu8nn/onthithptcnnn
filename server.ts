@@ -4413,7 +4413,11 @@ app.post('/api/uploaded-exams', async (req: Request, res: Response) => {
     category: requestedCategory,
     isUserUploaded: true,
     uploadedBy: authoritativeUploader,
-    uploadedAt: existingMatch?.uploadedAt || exam.uploadedAt || new Date().toISOString(),
+    uploadedAt:
+      existingMatch?.uploadedAt ||
+      (isPeerReplicatedRequest(req) && exam.uploadedAt
+        ? String(exam.uploadedAt)
+        : new Date().toISOString()),
     attachedFileName: exam.attachedFileName || existingMatch?.attachedFileName,
     hasAttachedOriginalFile: Boolean(
       attachedBlob ||
