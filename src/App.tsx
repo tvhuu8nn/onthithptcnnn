@@ -38,6 +38,10 @@ import {
 import { recordStudentQuestionMistake, syncMistakesFromServer } from './data/mistakesAnalytics';
 import { sendStudentScoreToAdmin } from './services/submissionService';
 import { authService, getAccountSubscriptionStatus, normalizePaymentAmount } from './services/authService';
+import {
+  subscribeRealtimeEvent,
+  notifyLocalDomainChange,
+} from './services/realtimeSyncService';
 import { AuthUser } from './types/auth';
 import {
   Sparkles,
@@ -176,16 +180,20 @@ export default function App() {
     syncCurrentUserSubscription();
     syncMistakesFromServer();
 
-    // Đồng bộ đề ngẫu nhiên vừa tạo trên các thiết bị khác (Android, iOS, Windows)
-    fetch('/api/custom-exams', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        if (payload?.success && Array.isArray(payload.data) && payload.data.length > 0) {
-          const custom: Exam[] = payload.data;
-          setExamList([...MOCK_EXAMS, ...custom.filter((c) => !MOCK_EXAMS.some((m) => m.code === c.code))]);
-        }
-      })
-      .catch(() => {});
+    const fetchLatestCustomExams = () => {
+      fetch(`/api/custom-exams?_t=${Date.now()}`, { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((payload) => {
+          if (payload?.success && Array.isArray(payload.data) && payload.data.length > 0) {
+            const custom: Exam[] = payload.data;
+            setExamList([...MOCK_EXAMS, ...custom.filter((c) => !MOCK_EXAMS.some((m) => m.code === c.code))]);
+          }
+        })
+        .catch(() => {});
+    };
+
+    // Đồng bộ đề ngẫu nhiên vừa tạo trên các thiết bị khác (Android, iOS, Windows, macOS)
+    fetchLatestCustomExams();
 
     const persistUploadedExamsLocally = (list: ExternalExamItem[]) => {
       try {
@@ -244,68 +252,76 @@ export default function App() {
     // Đồng bộ danh sách tài liệu được phép xem/sử dụng theo đúng quyền tài khoản hiện tại
     fetchAuthorizedUploadedExams();
 
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource('/api/submissions/stream');
-      es.addEventListener('custom_exams_updated', (ev: MessageEvent) => {
-        try {
-          const custom: Exam[] = JSON.parse(ev.data);
-          if (Array.isArray(custom) && custom.length > 0) {
-            setExamList([...MOCK_EXAMS, ...custom.filter((c) => !MOCK_EXAMS.some((m) => m.code === c.code))]);
+    const unsubCustomExams = subscribeRealtimeEvent('custom_exams_updated', (payload) => {
+      if (Array.isArray(payload) && payload.length > 0) {
+        setExamList([...MOCK_EXAMS, ...payload.filter((c: Exam) => !MOCK_EXAMS.some((m) => m.code === c.code))]);
+      } else {
+        fetchLatestCustomExams();
+      }
+    });
+
+    const unsubUploadedExams = subscribeRealtimeEvent('uploaded_exams_updated', () => {
+      // Máy chủ chỉ phát tín hiệu cập nhật; client tự tải lại danh sách đã lọc đúng quyền trên máy chủ
+      fetchAuthorizedUploadedExams();
+    });
+
+    const unsubMistakes = subscribeRealtimeEvent('mistakes_updated', () => {
+      syncMistakesFromServer();
+    });
+
+    const unsubDatauser = subscribeRealtimeEvent('datauser_updated', (payload) => {
+      try {
+        const active = authService.getCurrentUser();
+        if (
+          active &&
+          payload?.user &&
+          String(payload.user.username || '').trim().toLowerCase() ===
+            String(active.username || '').trim().toLowerCase()
+        ) {
+          if (payload.user.is_active === false && String(active.username).toLowerCase() !== 'admin') {
+            authService.logout();
+            setCurrentUser(null);
+            setLoginPromptReason(
+              'Tài khoản của bạn vừa bị Quản trị viên tạm khóa! Vui lòng liên hệ Admin để được mở lại tài khoản.'
+            );
+            setIsLoginModalOpen(true);
+            return;
           }
-        } catch {}
-      });
-      es.addEventListener('uploaded_exams_updated', () => {
-        // Máy chủ chỉ phát tín hiệu cập nhật; client tự tải lại danh sách đã lọc đúng quyền trên máy chủ
-        fetchAuthorizedUploadedExams();
-      });
-      es.addEventListener('mistakes_updated', () => {
-        syncMistakesFromServer();
-      });
-      es.addEventListener('datauser_updated', (ev: MessageEvent) => {
-        try {
-          const payload = JSON.parse(ev.data);
-          const active = authService.getCurrentUser();
-          if (
-            active &&
-            payload?.user &&
-            String(payload.user.username || '').trim().toLowerCase() ===
-              String(active.username || '').trim().toLowerCase()
-          ) {
-            if (payload.user.is_active === false && String(active.username).toLowerCase() !== 'admin') {
-              authService.logout();
-              setCurrentUser(null);
-              setLoginPromptReason(
-                'Tài khoản của bạn vừa bị Quản trị viên tạm khóa! Vui lòng liên hệ Admin để được mở lại tài khoản.'
-              );
-              setIsLoginModalOpen(true);
-              return;
-            }
-            const rawPayCandidate = payload.user.payment_amount ?? payload.user.paymentAmount;
-            const rawPay =
-              rawPayCandidate !== undefined && rawPayCandidate !== null ? Number(rawPayCandidate) : 200000;
-            const updatedUser: AuthUser = {
-              ...active,
-              fullName: payload.user.fullName || active.fullName,
-              className: payload.user.className || active.className,
-              paymentAmount: normalizePaymentAmount(rawPay),
-              startDate: payload.user.start_date || payload.user.startDate,
-              expiresAt: payload.user.expires_at || payload.user.expiresAt,
-            };
-            authService.saveSession(updatedUser, active.token);
-            setCurrentUser(updatedUser);
-          } else {
-            syncCurrentUserSubscription();
-          }
-        } catch {
+          const rawPayCandidate = payload.user.payment_amount ?? payload.user.paymentAmount;
+          const rawPay =
+            rawPayCandidate !== undefined && rawPayCandidate !== null ? Number(rawPayCandidate) : 200000;
+          const updatedUser: AuthUser = {
+            ...active,
+            fullName: payload.user.fullName || active.fullName,
+            className: payload.user.className || active.className,
+            paymentAmount: normalizePaymentAmount(rawPay),
+            startDate: payload.user.start_date || payload.user.startDate,
+            expiresAt: payload.user.expires_at || payload.user.expiresAt,
+          };
+          authService.saveSession(updatedUser, active.token);
+          setCurrentUser(updatedUser);
+        } else {
           syncCurrentUserSubscription();
         }
-      });
-    } catch {}
+      } catch {
+        syncCurrentUserSubscription();
+      }
+    });
+
+    const unsubSyncAll = subscribeRealtimeEvent('sync_all_updated', () => {
+      syncCurrentUserSubscription();
+      fetchAuthorizedUploadedExams();
+      fetchLatestCustomExams();
+      syncMistakesFromServer();
+    });
 
     return () => {
       clearInterval(timer);
-      if (es) es.close();
+      unsubCustomExams();
+      unsubUploadedExams();
+      unsubMistakes();
+      unsubDatauser();
+      unsubSyncAll();
     };
   }, [currentUser?.username]);
 
@@ -483,6 +499,7 @@ export default function App() {
       saveUploadedListToStorage(nextList);
       return nextList;
     });
+    notifyLocalDomainChange('uploaded_exams_updated', { changedAt: Date.now() });
   };
 
   const handleDeleteUploadedExam = async (examId: string) => {
@@ -531,6 +548,7 @@ export default function App() {
     if (payload?.success && Array.isArray(payload.data)) {
       setUploadedExams(payload.data);
       saveUploadedListToStorage(payload.data);
+      notifyLocalDomainChange('uploaded_exams_updated', { changedAt: Date.now() });
       return;
     }
 
@@ -540,6 +558,7 @@ export default function App() {
       saveUploadedListToStorage(nextList);
       return nextList;
     });
+    notifyLocalDomainChange('uploaded_exams_updated', { changedAt: Date.now() });
   };
 
   // Online Exam QR Assignment state
@@ -927,7 +946,11 @@ export default function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ exam: newExam }),
-    }).catch(() => {});
+    })
+      .then(() => {
+        notifyLocalDomainChange('custom_exams_updated', { changedAt: Date.now() });
+      })
+      .catch(() => {});
 
     setActiveExam(newExam);
     setCustomExamDuration(newExam.durationMinutes || 50);

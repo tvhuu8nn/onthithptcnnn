@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { subscribeRealtimeEvent } from '../services/realtimeSyncService';
 import {
   Users,
   UserCheck,
@@ -129,17 +130,17 @@ export const SheetUserManagementView: React.FC<SheetUserManagementViewProps> = (
       setNowMs(Date.now());
     }, 1000);
 
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource('/api/submissions/stream');
-      es.addEventListener('datauser_updated', () => {
-        loadUserDirectory();
-      });
-    } catch {}
+    const unsubUsers = subscribeRealtimeEvent('datauser_updated', () => {
+      loadUserDirectory();
+    });
+    const unsubAll = subscribeRealtimeEvent('sync_all_updated', () => {
+      loadUserDirectory();
+    });
 
     return () => {
       clearInterval(timer);
-      if (es) es.close();
+      unsubUsers();
+      unsubAll();
     };
   }, []);
 

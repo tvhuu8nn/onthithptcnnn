@@ -27,6 +27,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { explainQuestionWithAI } from '../services/aiService';
+import { subscribeRealtimeEvent } from '../services/realtimeSyncService';
 import { AuthUser } from '../types/auth';
 
 interface MistakeAnalyticsViewProps {
@@ -48,17 +49,15 @@ export const MistakeAnalyticsView: React.FC<MistakeAnalyticsViewProps> = ({
 
   useEffect(() => {
     syncMistakesFromServer().then(() => setSyncTick((t) => t + 1));
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource('/api/submissions/stream');
-      es.addEventListener('mistakes_updated', () => {
-        syncMistakesFromServer().then(() => setSyncTick((t) => t + 1));
-      });
-    } catch {
-      // ignore SSE error
-    }
+    const unsubMistakes = subscribeRealtimeEvent('mistakes_updated', () => {
+      syncMistakesFromServer().then(() => setSyncTick((t) => t + 1));
+    });
+    const unsubAll = subscribeRealtimeEvent('sync_all_updated', () => {
+      syncMistakesFromServer().then(() => setSyncTick((t) => t + 1));
+    });
     return () => {
-      if (es) es.close();
+      unsubMistakes();
+      unsubAll();
     };
   }, []);
 

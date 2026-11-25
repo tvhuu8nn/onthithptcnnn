@@ -1,5 +1,46 @@
 [
   {
+    "id": 1795570309178,
+    "username": "pktuyen",
+    "password": "gv123",
+    "role": "teacher",
+    "fullName": "Phạm Kim Tuyến",
+    "email": "phamthikimtuyen@truong.edu.vn",
+    "className": "Tổ Công Nghệ Nông nghiệp",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-25T01:31:49.178Z",
+    "payment_amount": 0,
+    "start_date": "2026-11-25",
+    "expires_at": "2026-12-02",
+    "aliases": [
+      "pktuyen",
+      "pham kim tuyen",
+      "phamkimtuyen",
+      "phamthikimtuyen"
+    ]
+  },
+  {
+    "id": 1795430854618,
+    "username": "testdeluser251702",
+    "password": "TestPass123",
+    "role": "student",
+    "fullName": "Test Del Two",
+    "email": "testdeluser251702@truong.edu.vn",
+    "className": "12A1",
+    "must_change_password": false,
+    "is_active": true,
+    "created_at": "2026-11-06T11:50:24.301Z",
+    "payment_amount": 100000,
+    "start_date": "2026-11-06",
+    "expires_at": "2027-11-06",
+    "aliases": [
+      "testdeluser251702",
+      "test del two",
+      "testdeltwo"
+    ]
+  },
+  {
     "id": 1794968522071,
     "username": "nthien",
     "password": "gv123",
@@ -902,25 +943,6 @@
       "pttnga",
       "pham thi to nga",
       "phamthitonga"
-    ]
-  },
-  {
-    "id": 1794886924685,
-    "username": "dangnhung",
-    "password": "gv123",
-    "role": "teacher",
-    "fullName": "Đặng Nhung",
-    "email": "dangnhung@truong.edu.vn",
-    "className": "Tổ Công Nghệ Nông nghiệp",
-    "must_change_password": false,
-    "is_active": true,
-    "created_at": "2026-11-17T03:42:04.685Z",
-    "payment_amount": 0,
-    "start_date": "2026-11-17",
-    "expires_at": "2026-11-24",
-    "aliases": [
-      "dangnhung",
-      "dang nhung"
     ]
   },
   {

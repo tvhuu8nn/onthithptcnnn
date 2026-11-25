@@ -395,10 +395,50 @@ function persistSubmissionsToFile() {
 // Load on startup
 loadSubmissionsFromFile();
 
-// Active SSE clients for real-time broadcast to teacher screens
+// Active SSE clients for real-time broadcast across all devices & platforms
 const sseClients = new Set<Response>();
 
+type SyncDomainKey =
+  | 'datauser'
+  | 'uploadedExams'
+  | 'submissions'
+  | 'assignments'
+  | 'customExams'
+  | 'mistakes'
+  | 'visitorStats';
+
+const syncVersions: Record<SyncDomainKey, number> = {
+  datauser: Date.now(),
+  uploadedExams: Date.now(),
+  submissions: Date.now(),
+  assignments: Date.now(),
+  customExams: Date.now(),
+  mistakes: Date.now(),
+  visitorStats: Date.now(),
+};
+
+function touchSyncVersion(domain: SyncDomainKey, ts = Date.now()): void {
+  syncVersions[domain] = Math.max(syncVersions[domain] + 1, ts);
+}
+
 function broadcastSSE(eventType: string, data: any) {
+  const now = Date.now();
+  if (eventType === 'datauser_updated') touchSyncVersion('datauser', now);
+  else if (eventType === 'uploaded_exams_updated') touchSyncVersion('uploadedExams', now);
+  else if (
+    eventType === 'submission_added' ||
+    eventType === 'submission_deleted' ||
+    eventType === 'submissions_reset'
+  ) {
+    touchSyncVersion('submissions', now);
+  } else if (eventType === 'assignment_updated') touchSyncVersion('assignments', now);
+  else if (eventType === 'custom_exams_updated') touchSyncVersion('customExams', now);
+  else if (eventType === 'mistakes_updated') touchSyncVersion('mistakes', now);
+  else if (eventType === 'visitor_stats_updated') touchSyncVersion('visitorStats', now);
+  else if (eventType === 'sync_all_updated') {
+    (Object.keys(syncVersions) as SyncDomainKey[]).forEach((k) => touchSyncVersion(k, now));
+  }
+
   const payload = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
   sseClients.forEach((client) => {
     try {
@@ -1234,10 +1274,28 @@ async function ensureSharedCloudSqlStore(): Promise<void> {
         is_deleted BOOLEAN DEFAULT FALSE,
         updated_at BIGINT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS agritech_custom_exams_store (
+        exam_id VARCHAR(200) PRIMARY KEY,
+        exam_json TEXT NOT NULL,
+        updated_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS agritech_mistakes_store (
+        question_id VARCHAR(200) PRIMARY KEY,
+        record_json TEXT NOT NULL,
+        updated_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS agritech_visitor_stats_store (
+        store_key VARCHAR(100) PRIMARY KEY,
+        state_json TEXT NOT NULL,
+        updated_at BIGINT NOT NULL
+      );
       GRANT ALL PRIVILEGES ON TABLE agritech_datauser_store TO PUBLIC;
       GRANT ALL PRIVILEGES ON TABLE agritech_qr_assignments_store TO PUBLIC;
       GRANT ALL PRIVILEGES ON TABLE agritech_uploaded_exams_store TO PUBLIC;
       GRANT ALL PRIVILEGES ON TABLE agritech_submissions_store TO PUBLIC;
+      GRANT ALL PRIVILEGES ON TABLE agritech_custom_exams_store TO PUBLIC;
+      GRANT ALL PRIVILEGES ON TABLE agritech_mistakes_store TO PUBLIC;
+      GRANT ALL PRIVILEGES ON TABLE agritech_visitor_stats_store TO PUBLIC;
       GRANT ALL PRIVILEGES ON TABLE users TO PUBLIC;`,
       true
     );
@@ -1686,60 +1744,242 @@ async function pullAndMergeAccountsFromPeers(
   return users;
 }
 
-// Khởi tạo bảng Cloud SQL dùng chung và đồng bộ tài khoản + tài liệu khi khởi động máy chủ
-// Ưu tiên tải trạng thái đã xóa (tombstones) từ Cloud SQL TRƯỚC để không bao giờ khôi phục lại tài khoản/tài liệu Admin đã xóa
+// Real-Time Cross-Instance Cloud SQL Watermark Watcher
+// Tự động phát hiện mọi thay đổi dữ liệu mới từ các thiết bị/nền tảng/máy chủ khác (ais-dev <-> ais-pre <-> Cloud Run)
+// và phát tín hiệu SSE ngay lập tức tới tất cả trình duyệt & thiết bị đang kết nối.
+const lastSeenSqlWatermarks: Record<string, string> = {};
+let isCheckingSqlWatermarks = false;
+let lastSqlWatermarkCheckMs = 0;
+
+async function checkCloudSqlWatermarksAndBroadcast(force = false): Promise<string[]> {
+  const now = Date.now();
+  if (isCheckingSqlWatermarks) return [];
+  if (!force && now - lastSqlWatermarkCheckMs < 1500) return [];
+  isCheckingSqlWatermarks = true;
+  lastSqlWatermarkCheckMs = now;
+  const changedDomains: string[] = [];
+
+  try {
+    const rows = await pgQuery(
+      `SELECT 'datauser' AS k, COALESCE(MAX(updated_at), 0)::text AS v, COUNT(*)::text AS c FROM agritech_datauser_store
+       UNION ALL SELECT 'uploaded_exams', COALESCE(MAX(updated_at), 0)::text, COUNT(*)::text FROM agritech_uploaded_exams_store
+       UNION ALL SELECT 'submissions', COALESCE(MAX(updated_at), 0)::text, COUNT(*)::text FROM agritech_submissions_store
+       UNION ALL SELECT 'assignments', COALESCE(MAX(updated_at), 0)::text, COUNT(*)::text FROM agritech_qr_assignments_store
+       UNION ALL SELECT 'custom_exams', COALESCE(MAX(updated_at), 0)::text, COUNT(*)::text FROM agritech_custom_exams_store
+       UNION ALL SELECT 'mistakes', COALESCE(MAX(updated_at), 0)::text, COUNT(*)::text FROM agritech_mistakes_store
+       UNION ALL SELECT 'visitor_stats', COALESCE(MAX(updated_at), 0)::text, COUNT(*)::text FROM agritech_visitor_stats_store;`
+    );
+
+    if (!rows || rows.length === 0) return [];
+
+    const isInitialBaseline = Object.keys(lastSeenSqlWatermarks).length === 0;
+    const toRefresh: string[] = [];
+
+    for (const row of rows) {
+      const key = String(row[0] || '');
+      const sig = `${row[1] || '0'}:${row[2] || '0'}`;
+      if (!key) continue;
+      if (lastSeenSqlWatermarks[key] && lastSeenSqlWatermarks[key] !== sig) {
+        toRefresh.push(key);
+      }
+      lastSeenSqlWatermarks[key] = sig;
+    }
+
+    if (isInitialBaseline || toRefresh.length === 0) {
+      return [];
+    }
+
+    for (const domainKey of toRefresh) {
+      try {
+        if (domainKey === 'datauser') {
+          await pullAndMergeAccountsFromPeers(undefined, true);
+          changedDomains.push('datauser');
+          broadcastSSE('datauser_updated', {
+            action: 'cloud_sync',
+            changedAt: Date.now(),
+          });
+        } else if (domainKey === 'uploaded_exams') {
+          await pullAndMergeUploadedExamsFromCloudSql(true);
+          changedDomains.push('uploadedExams');
+          broadcastSSE('uploaded_exams_updated', {
+            changedAt: Date.now(),
+            source: 'cloud_sync',
+          });
+        } else if (domainKey === 'submissions') {
+          await pullAndMergeSubmissionsFromCloudSqlAndPeers(undefined, true);
+          changedDomains.push('submissions');
+          touchSyncVersion('submissions');
+        } else if (domainKey === 'assignments') {
+          await loadAssignmentsFromCloudSql();
+          changedDomains.push('assignments');
+          broadcastSSE('assignment_updated', {
+            changedAt: Date.now(),
+            source: 'cloud_sync',
+          });
+        } else if (domainKey === 'custom_exams') {
+          const changed = await pullAndMergeCustomExamsFromCloudSql(true);
+          if (changed) {
+            changedDomains.push('customExams');
+            broadcastSSE('custom_exams_updated', sharedCustomExams);
+          }
+        } else if (domainKey === 'mistakes') {
+          const changed = await pullAndMergeMistakesFromCloudSql(true);
+          if (changed) {
+            changedDomains.push('mistakes');
+            broadcastSSE('mistakes_updated', sharedMistakesRecord);
+          }
+        } else if (domainKey === 'visitor_stats') {
+          const changed = await pullAndMergeVisitorStatsFromCloudSql(true);
+          if (changed) {
+            changedDomains.push('visitorStats');
+            broadcastSSE('visitor_stats_updated', getVisitorStatsSnapshot());
+          }
+        }
+      } catch {}
+    }
+  } catch {
+    // Ignore transient SQL errors
+  } finally {
+    isCheckingSqlWatermarks = false;
+  }
+
+  return changedDomains;
+}
+
+async function runFullTwoWayCloudSync(): Promise<{
+  usersCount: number;
+  uploadedExamsCount: number;
+  submissionsCount: number;
+  assignmentsCount: number;
+  customExamsCount: number;
+  mistakesCount: number;
+}> {
+  await ensureSharedCloudSqlStore();
+
+  // 1. Tài khoản người dùng (ưu tiên đồng bộ cả danh sách xóa tombstones 2 chiều)
+  const localDeletedUsers = loadDeletedUsernamesServer();
+  for (const delU of Array.from(localDeletedUsers)) {
+    if (!delU || delU === 'admin') continue;
+    await pgQueryParams(
+      `INSERT INTO agritech_datauser_store (username, account_json, is_deleted, updated_at)
+       VALUES ($1, '{}', TRUE, $2)
+       ON CONFLICT (username) DO NOTHING`,
+      [delU, Date.now()]
+    );
+  }
+  await pullAndMergeAccountsFromPeers(undefined, true);
+  const { users } = loadDataUsers(true);
+  const deletedUsers = loadDeletedUsernamesServer();
+  for (const acc of users) {
+    const cleanU = cleanAuthString(acc.username).replace(/^@+/, '').toLowerCase();
+    if (!cleanU || deletedUsers.has(cleanU)) continue;
+    await Promise.allSettled([
+      pgQueryParams(
+        `INSERT INTO agritech_datauser_store (username, account_json, is_deleted, updated_at)
+         VALUES ($1, $2, FALSE, $3)
+         ON CONFLICT (username) DO NOTHING`,
+        [cleanU, JSON.stringify(acc), Date.now()]
+      ),
+      pgQueryParams(
+        `INSERT INTO users (username, password, role, full_name, class_name, must_change_password, is_active)
+         VALUES ($1, $2, $3, $4, $5, FALSE, $6)
+         ON CONFLICT (username) DO NOTHING`,
+        [
+          cleanU,
+          String(acc.password || 'gv123'),
+          String(acc.role || 'teacher'),
+          String(acc.fullName || cleanU),
+          String(acc.className || 'Tổ Công Nghệ Nông nghiệp'),
+          acc.is_active !== false,
+        ]
+      ),
+    ]);
+  }
+  persistDataUsersToFile(users);
+  saveDeletedUsernamesServer(deletedUsers);
+
+  // 2. Tài liệu / Đề thi tải lên (đồng bộ 2 chiều + ghi lại data/uploaded_exams.json & data/deleted_uploaded_exams.json)
+  await pullAndMergeUploadedExamsFromCloudSql(true);
+  const deletedDocs = loadDeletedUploadedExamIdsServer();
+  for (const ex of sharedUploadedExams) {
+    if (!ex?.id || deletedDocs.has(String(ex.id))) continue;
+    const blob = loadPersistentBlob(String(ex.id));
+    await pgQueryParams(
+      `INSERT INTO agritech_uploaded_exams_store (exam_id, exam_json, blob_data_url, is_deleted, updated_at)
+       VALUES ($1, $2, $3, FALSE, $4)
+       ON CONFLICT (exam_id) DO NOTHING`,
+      [String(ex.id), JSON.stringify(toLightweightUploadedExam(ex)), blob, Date.now()]
+    );
+  }
+  persistUploadedExams();
+  saveDeletedUploadedExamIdsServer(deletedDocs);
+
+  // 3. Giao bài QR
+  await loadAssignmentsFromCloudSql();
+  persistAssignments();
+
+  // 4. Bảng điểm & Bài làm học sinh
+  await pullAndMergeSubmissionsFromCloudSqlAndPeers(undefined, true);
+  for (const sub of inMemorySubmissions) {
+    if (!sub?.id || String(sub.id).startsWith('sub_0') || String(sub.id) === 'sub_10') continue;
+    if (deletedSubmissionIdsSet.has(String(sub.id))) continue;
+    await upsertSubmissionToCloudSql(sub);
+  }
+  persistSubmissionsToFile();
+
+  // 5. Đề thi ngẫu nhiên (Custom Exams)
+  await pullAndMergeCustomExamsFromCloudSql(true);
+  for (const ex of sharedCustomExams) {
+    if (ex?.id || ex?.code) {
+      await upsertCustomExamToCloudSql(ex);
+    }
+  }
+  persistCustomExams();
+
+  // 6. Thống kê câu sai (Mistakes Analytics)
+  await pullAndMergeMistakesFromCloudSql(true);
+  if (Object.keys(sharedMistakesRecord).length > 0) {
+    await upsertMistakesToCloudSql(sharedMistakesRecord);
+  }
+  persistMistakes();
+
+  // 7. Thống kê truy cập & lượt tải (Visitor Stats)
+  await pullAndMergeVisitorStatsFromCloudSql(true);
+  await upsertVisitorStatsToCloudSql();
+  persistVisitorStatsToFile();
+
+  // Cập nhật baseline watermarks sau khi đồng bộ toàn bộ
+  await checkCloudSqlWatermarksAndBroadcast(true);
+
+  return {
+    usersCount: users.length,
+    uploadedExamsCount: sharedUploadedExams.length,
+    submissionsCount: inMemorySubmissions.length,
+    assignmentsCount: sharedAssignmentsMap.size,
+    customExamsCount: sharedCustomExams.length,
+    mistakesCount: Object.keys(sharedMistakesRecord).length,
+  };
+}
+
+// Khởi tạo bảng Cloud SQL dùng chung và đồng bộ toàn diện 7 nhóm dữ liệu khi khởi động máy chủ
 setTimeout(async () => {
   try {
-    await ensureSharedCloudSqlStore();
-    await pullAndMergeAccountsFromPeers(undefined, true);
-    const { users } = loadDataUsers(true);
-    const deletedUsers = loadDeletedUsernamesServer();
-    for (const acc of users) {
-      const cleanU = cleanAuthString(acc.username).replace(/^@+/, '').toLowerCase();
-      if (!cleanU || deletedUsers.has(cleanU)) continue;
-      await Promise.allSettled([
-        pgQueryParams(
-          `INSERT INTO agritech_datauser_store (username, account_json, is_deleted, updated_at)
-           VALUES ($1, $2, FALSE, $3)
-           ON CONFLICT (username) DO NOTHING`,
-          [cleanU, JSON.stringify(acc), Date.now()]
-        ),
-        pgQueryParams(
-          `INSERT INTO users (username, password, role, full_name, class_name, must_change_password, is_active)
-           VALUES ($1, $2, $3, $4, $5, FALSE, $6)
-           ON CONFLICT (username) DO NOTHING`,
-          [
-            cleanU,
-            String(acc.password || 'gv123'),
-            String(acc.role || 'teacher'),
-            String(acc.fullName || cleanU),
-            String(acc.className || 'Tổ Công Nghệ Nông nghiệp'),
-            acc.is_active !== false,
-          ]
-        ),
-      ]);
-    }
-    await pullAndMergeUploadedExamsFromCloudSql(true);
-    const deletedDocs = loadDeletedUploadedExamIdsServer();
-    for (const ex of sharedUploadedExams) {
-      if (!ex?.id || deletedDocs.has(String(ex.id))) continue;
-      const blob = loadPersistentBlob(String(ex.id));
-      await pgQueryParams(
-        `INSERT INTO agritech_uploaded_exams_store (exam_id, exam_json, blob_data_url, is_deleted, updated_at)
-         VALUES ($1, $2, $3, FALSE, $4)
-         ON CONFLICT (exam_id) DO NOTHING`,
-        [String(ex.id), JSON.stringify(toLightweightUploadedExam(ex)), blob, Date.now()]
-      );
-    }
-    await loadAssignmentsFromCloudSql();
-    await pullAndMergeSubmissionsFromCloudSqlAndPeers(undefined, true);
-    for (const sub of inMemorySubmissions) {
-      if (!sub?.id || String(sub.id).startsWith('sub_0') || String(sub.id) === 'sub_10') continue;
-      if (deletedSubmissionIdsSet.has(String(sub.id))) continue;
-      await upsertSubmissionToCloudSql(sub);
-    }
+    await runFullTwoWayCloudSync();
   } catch {}
 }, 800);
+
+// Bộ giám sát thay đổi Cloud SQL thời gian thực giữa tất cả các nền tảng / thiết bị / instance
+setInterval(() => {
+  if (sseClients.size > 0) {
+    void checkCloudSqlWatermarksAndBroadcast(false);
+  }
+}, 2500);
+
+setInterval(() => {
+  if (sseClients.size === 0) {
+    void checkCloudSqlWatermarksAndBroadcast(false);
+  }
+}, 15000);
 
 // Shared Exam Assignments store (so any custom or assigned exam works permanently across all student devices via Link/QR 24/7)
 const ASSIGNMENTS_FILE = path.join(DATA_DIR, 'assignments.json');
@@ -1921,7 +2161,7 @@ async function lookupAssignmentFromCloudSqlOrPeers(
   return null;
 }
 
-app.post('/api/assignments', (req: Request, res: Response) => {
+app.post('/api/assignments', async (req: Request, res: Response) => {
   const { exam, config } = req.body || {};
   if (!exam || (!exam.id && !exam.code)) {
     return res.status(400).json({ success: false, message: 'Thiếu dữ liệu đề thi' });
@@ -2036,7 +2276,9 @@ app.post('/api/assignments', (req: Request, res: Response) => {
   keysToPersist.push('__latest_active__');
 
   persistAssignments();
-  upsertAssignmentKeysToCloudSql(Array.from(new Set(keysToPersist)), record).catch(() => {});
+  if (!isPeerReplicatedRequest(req)) {
+    await upsertAssignmentKeysToCloudSql(Array.from(new Set(keysToPersist)), record);
+  }
 
   // Replicate to counterpart origin (ais-dev <-> ais-pre) so QR code works permanently across both URLs
   if (!isPeerReplicatedRequest(req)) {
@@ -2192,59 +2434,187 @@ function persistCustomExams() {
   }
 }
 
-app.get('/api/mistakes', (req: Request, res: Response) => {
+function mergeMistakeRecordIntoShared(qId: string, incoming: any): boolean {
+  if (!qId || !incoming || typeof incoming !== 'object') return false;
+  const existing = sharedMistakesRecord[qId] || {
+    totalAttempts: 0,
+    wrongAttempts: 0,
+    lastChosen: '',
+    students: [],
+  };
+  const incomingStudents = Array.isArray(incoming.students) ? incoming.students : [];
+  const existingStudents = Array.isArray(existing.students) ? existing.students : [];
+  const mergedStudents = [...incomingStudents];
+  existingStudents.forEach((st: any) => {
+    if (
+      !mergedStudents.some(
+        (m: any) => m.studentName === st.studentName && m.examCode === st.examCode
+      )
+    ) {
+      mergedStudents.push(st);
+    }
+  });
+  const nextRec = {
+    totalAttempts: Math.max(Number(existing.totalAttempts) || 0, Number(incoming.totalAttempts) || 0),
+    wrongAttempts: Math.max(Number(existing.wrongAttempts) || 0, Number(incoming.wrongAttempts) || 0),
+    lastChosen: incoming.lastChosen || existing.lastChosen || '',
+    students: mergedStudents.slice(0, 20),
+  };
+  const changed = JSON.stringify(existing) !== JSON.stringify(nextRec);
+  sharedMistakesRecord[qId] = nextRec;
+  return changed;
+}
+
+async function upsertMistakesToCloudSql(records: Record<string, any>): Promise<void> {
+  const entries = Object.entries(records || {});
+  if (entries.length === 0) return;
+  const nowMs = Date.now();
+  await Promise.allSettled(
+    entries.map(([qId, rec]) =>
+      pgQueryParams(
+        `INSERT INTO agritech_mistakes_store (question_id, record_json, updated_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (question_id) DO UPDATE SET
+           record_json = EXCLUDED.record_json,
+           updated_at = EXCLUDED.updated_at`,
+        [String(qId).slice(0, 200), JSON.stringify(rec), nowMs],
+        false,
+        6000
+      )
+    )
+  );
+}
+
+let lastMistakesSqlPullMs = 0;
+async function pullAndMergeMistakesFromCloudSql(force = false): Promise<boolean> {
+  const now = Date.now();
+  if (!force && now - lastMistakesSqlPullMs < 1500) return false;
+  lastMistakesSqlPullMs = now;
+  let changed = false;
+  try {
+    const rows = await pgQuery(
+      `SELECT question_id, record_json FROM agritech_mistakes_store ORDER BY updated_at ASC;`
+    );
+    for (const [qId, recJson] of rows) {
+      if (!qId || !recJson) continue;
+      try {
+        const parsed = JSON.parse(recJson);
+        if (mergeMistakeRecordIntoShared(qId, parsed)) {
+          changed = true;
+        }
+      } catch {}
+    }
+    if (changed) {
+      persistMistakes();
+    }
+  } catch {}
+  return changed;
+}
+
+async function upsertCustomExamToCloudSql(exam: any): Promise<void> {
+  if (!exam || (!exam.id && !exam.code)) return;
+  const examKey = String(exam.id || exam.code).slice(0, 200);
+  const nowMs = Date.now();
+  try {
+    await pgQueryParams(
+      `INSERT INTO agritech_custom_exams_store (exam_id, exam_json, updated_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (exam_id) DO UPDATE SET
+         exam_json = EXCLUDED.exam_json,
+         updated_at = EXCLUDED.updated_at`,
+      [examKey, JSON.stringify(exam), nowMs],
+      false,
+      8000
+    );
+  } catch {}
+}
+
+let lastCustomExamsSqlPullMs = 0;
+async function pullAndMergeCustomExamsFromCloudSql(force = false): Promise<boolean> {
+  const now = Date.now();
+  if (!force && now - lastCustomExamsSqlPullMs < 1500) return false;
+  lastCustomExamsSqlPullMs = now;
+  let changed = false;
+  try {
+    const rows = await pgQuery(
+      `SELECT exam_id, exam_json FROM agritech_custom_exams_store ORDER BY updated_at DESC LIMIT 50;`
+    );
+    if (!rows.length) return false;
+    const map = new Map<string, any>();
+    for (const [, examJson] of rows) {
+      if (!examJson) continue;
+      try {
+        const parsed = JSON.parse(examJson);
+        if (parsed && (parsed.id || parsed.code)) {
+          const key = String(parsed.id || parsed.code);
+          if (!map.has(key)) map.set(key, parsed);
+        }
+      } catch {}
+    }
+    for (const localEx of sharedCustomExams) {
+      if (!localEx || (!localEx.id && !localEx.code)) continue;
+      const key = String(localEx.id || localEx.code);
+      if (!map.has(key)) map.set(key, localEx);
+    }
+    const nextList = Array.from(map.values()).slice(0, 50);
+    if (JSON.stringify(nextList) !== JSON.stringify(sharedCustomExams)) {
+      sharedCustomExams = nextList;
+      persistCustomExams();
+      changed = true;
+    }
+  } catch {}
+  return changed;
+}
+
+app.get('/api/mistakes', async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  if (!isPeerReplicatedRequest(req)) {
+    await pullAndMergeMistakesFromCloudSql(false);
+  }
   res.json({ success: true, data: sharedMistakesRecord });
 });
 
-app.post('/api/mistakes', (req: Request, res: Response) => {
+app.post('/api/mistakes', async (req: Request, res: Response) => {
   const { records } = req.body || {};
   if (!records || typeof records !== 'object') {
     return res.status(400).json({ success: false, message: 'Dữ liệu thống kê lỗi không hợp lệ' });
   }
+  const touchedRecords: Record<string, any> = {};
   Object.entries(records).forEach(([qId, incoming]: [string, any]) => {
     if (!incoming || typeof incoming !== 'object') return;
-    const existing = sharedMistakesRecord[qId] || {
-      totalAttempts: 0,
-      wrongAttempts: 0,
-      lastChosen: '',
-      students: [],
-    };
-    const incomingStudents = Array.isArray(incoming.students) ? incoming.students : [];
-    const existingStudents = Array.isArray(existing.students) ? existing.students : [];
-    const mergedStudents = [...incomingStudents];
-    existingStudents.forEach((st: any) => {
-      if (
-        !mergedStudents.some(
-          (m: any) => m.studentName === st.studentName && m.examCode === st.examCode
-        )
-      ) {
-        mergedStudents.push(st);
-      }
-    });
-    sharedMistakesRecord[qId] = {
-      totalAttempts: Math.max(Number(existing.totalAttempts) || 0, Number(incoming.totalAttempts) || 0),
-      wrongAttempts: Math.max(Number(existing.wrongAttempts) || 0, Number(incoming.wrongAttempts) || 0),
-      lastChosen: incoming.lastChosen || existing.lastChosen || '',
-      students: mergedStudents.slice(0, 20),
-    };
+    mergeMistakeRecordIntoShared(qId, incoming);
+    touchedRecords[qId] = sharedMistakesRecord[qId];
   });
   persistMistakes();
+  if (!isPeerReplicatedRequest(req)) {
+    await upsertMistakesToCloudSql(touchedRecords);
+    const peers = getPeerOrigins(req);
+    peers.forEach((peer) => {
+      fetch(`${peer}/api/mistakes?peerReplicated=1`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Peer-Replicated': '1' },
+        body: JSON.stringify({ records: touchedRecords, peerReplicated: true }),
+      }).catch(() => {});
+    });
+  }
   broadcastSSE('mistakes_updated', sharedMistakesRecord);
   res.json({ success: true, data: sharedMistakesRecord });
 });
 
-app.get('/api/custom-exams', (req: Request, res: Response) => {
+app.get('/api/custom-exams', async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  if (!isPeerReplicatedRequest(req)) {
+    await pullAndMergeCustomExamsFromCloudSql(false);
+  }
   res.json({ success: true, data: sharedCustomExams });
 });
 
-app.post('/api/custom-exams', (req: Request, res: Response) => {
+app.post('/api/custom-exams', async (req: Request, res: Response) => {
   const { exam, config } = req.body || {};
   if (!exam || (!exam.id && !exam.code)) {
     return res.status(400).json({ success: false, message: 'Đề thi không hợp lệ' });
   }
-  // Keep custom random exams synced across all devices
+  // Keep custom random exams synced across all devices & platforms
   sharedCustomExams = [
     exam,
     ...sharedCustomExams.filter((e) => e.code !== exam.code && e.id !== exam.id),
@@ -2262,16 +2632,33 @@ app.post('/api/custom-exams', (req: Request, res: Response) => {
     updatedAt: new Date().toISOString(),
     timestampMs: Date.now(),
   };
+  const keysToPersist: string[] = [];
   if (exam.id) {
     sharedAssignmentsMap.set(String(exam.id), record);
     sharedAssignmentsMap.set(String(exam.id).toLowerCase(), record);
+    keysToPersist.push(String(exam.id), String(exam.id).toLowerCase());
   }
   if (exam.code) {
     sharedAssignmentsMap.set(String(exam.code), record);
     sharedAssignmentsMap.set(String(exam.code).toLowerCase(), record);
+    keysToPersist.push(String(exam.code), String(exam.code).toLowerCase());
   }
   persistCustomExams();
   persistAssignments();
+  if (!isPeerReplicatedRequest(req)) {
+    await Promise.allSettled([
+      upsertCustomExamToCloudSql(exam),
+      upsertAssignmentKeysToCloudSql(Array.from(new Set(keysToPersist)), record),
+    ]);
+    const peers = getPeerOrigins(req);
+    peers.forEach((peer) => {
+      fetch(`${peer}/api/custom-exams?peerReplicated=1`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Peer-Replicated': '1' },
+        body: JSON.stringify({ exam, config, peerReplicated: true }),
+      }).catch(() => {});
+    });
+  }
   broadcastSSE('custom_exams_updated', sharedCustomExams);
   res.json({ success: true, data: sharedCustomExams });
 });
@@ -4597,10 +4984,40 @@ app.get('/api/health', (req: Request, res: Response) => {
     port: PORT,
     activeClients: sseClients.size,
     totalSubmissions: inMemorySubmissions.length,
+    versions: syncVersions,
   });
 });
 
-// 2. Real-time Server-Sent Events stream for teacher / admin dashboard
+// 1b. Lightweight real-time sync version endpoint for instant cross-platform / mobile resume sync
+app.get('/api/sync/version', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const forceCheck = String(req.query.force || '') === '1';
+  await checkCloudSqlWatermarksAndBroadcast(forceCheck);
+  res.json({
+    success: true,
+    versions: syncVersions,
+    serverTime: new Date().toISOString(),
+  });
+});
+
+// 1c. Force immediate full two-way sync across Cloud SQL, local disk files, peers, and all connected clients
+app.post('/api/sync/now', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const summary = await runFullTwoWayCloudSync();
+  broadcastSSE('sync_all_updated', {
+    changedAt: Date.now(),
+    versions: syncVersions,
+    summary,
+  });
+  res.json({
+    success: true,
+    versions: syncVersions,
+    summary,
+    serverTime: new Date().toISOString(),
+  });
+});
+
+// 2. Real-time Server-Sent Events stream for all connected platforms & devices
 app.get('/api/submissions/stream', (req: Request, res: Response) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -4609,10 +5026,11 @@ app.get('/api/submissions/stream', (req: Request, res: Response) => {
     'X-Accel-Buffering': 'no',
   });
   res.write(`data: ${JSON.stringify({ type: 'connected', total: inMemorySubmissions.length })}\n\n`);
+  res.write(`event: sync_versions\ndata: ${JSON.stringify(syncVersions)}\n\n`);
 
   sseClients.add(res);
 
-  // Send periodic keep-alive ping
+  // Send periodic keep-alive ping every 15s so mobile carrier NAT / Cloud Run proxies stay alive
   const keepAlive = setInterval(() => {
     try {
       res.write(': keep-alive\n\n');
@@ -4620,7 +5038,7 @@ app.get('/api/submissions/stream', (req: Request, res: Response) => {
       clearInterval(keepAlive);
       sseClients.delete(res);
     }
-  }, 25000);
+  }, 15000);
 
   req.on('close', () => {
     clearInterval(keepAlive);
@@ -6298,6 +6716,124 @@ function persistVisitorStatsToFile() {
   }
 }
 
+function mergeVisitorStatsState(remote: Partial<PersistedVisitorStats>): boolean {
+  if (!remote || typeof remote !== 'object') return false;
+  const beforeSig = `${visitorStatsState.totalVisits}:${visitorStatsState.totalDownloads}:${visitorStatsState.uniqueVisitorIds.length}:${visitorStatsState.visitLogs[0]?.id || ''}:${visitorStatsState.downloadLogs[0]?.id || ''}`;
+
+  visitorStatsState.totalVisits = Math.max(
+    visitorStatsState.totalVisits || 0,
+    Number(remote.totalVisits) || 0
+  );
+  visitorStatsState.totalDownloads = Math.max(
+    visitorStatsState.totalDownloads || 0,
+    Number(remote.totalDownloads) || 0
+  );
+
+  if (Array.isArray(remote.uniqueVisitorIds)) {
+    const uniqSet = new Set([...(visitorStatsState.uniqueVisitorIds || []), ...remote.uniqueVisitorIds]);
+    visitorStatsState.uniqueVisitorIds = Array.from(uniqSet).slice(-5000);
+  }
+
+  if (remote.dailyVisits && typeof remote.dailyVisits === 'object') {
+    for (const [k, v] of Object.entries(remote.dailyVisits)) {
+      visitorStatsState.dailyVisits[k] = Math.max(
+        visitorStatsState.dailyVisits[k] || 0,
+        Number(v) || 0
+      );
+    }
+  }
+  if (remote.dailyDownloads && typeof remote.dailyDownloads === 'object') {
+    for (const [k, v] of Object.entries(remote.dailyDownloads)) {
+      visitorStatsState.dailyDownloads[k] = Math.max(
+        visitorStatsState.dailyDownloads[k] || 0,
+        Number(v) || 0
+      );
+    }
+  }
+  if (remote.tabViews && typeof remote.tabViews === 'object') {
+    for (const [k, v] of Object.entries(remote.tabViews)) {
+      visitorStatsState.tabViews[k] = Math.max(
+        visitorStatsState.tabViews[k] || 0,
+        Number(v) || 0
+      );
+    }
+  }
+  if (remote.downloadsByCategory && typeof remote.downloadsByCategory === 'object') {
+    for (const [k, v] of Object.entries(remote.downloadsByCategory)) {
+      visitorStatsState.downloadsByCategory[k] = Math.max(
+        visitorStatsState.downloadsByCategory[k] || 0,
+        Number(v) || 0
+      );
+    }
+  }
+  if (remote.downloadsByUser && typeof remote.downloadsByUser === 'object') {
+    for (const [uKey, stat] of Object.entries(remote.downloadsByUser)) {
+      if (!stat) continue;
+      const prev = visitorStatsState.downloadsByUser[uKey];
+      if (!prev || (stat.count || 0) > (prev.count || 0)) {
+        visitorStatsState.downloadsByUser[uKey] = stat;
+      }
+    }
+  }
+  if (Array.isArray(remote.visitLogs) && remote.visitLogs.length > 0) {
+    const map = new Map<string, VisitLogEntry>();
+    for (const entry of [...(visitorStatsState.visitLogs || []), ...remote.visitLogs]) {
+      if (entry?.id && !map.has(entry.id)) map.set(entry.id, entry);
+    }
+    visitorStatsState.visitLogs = Array.from(map.values())
+      .sort((a, b) => Date.parse(b.timestamp || '') - Date.parse(a.timestamp || ''))
+      .slice(0, 150);
+  }
+  if (Array.isArray(remote.downloadLogs) && remote.downloadLogs.length > 0) {
+    const map = new Map<string, DownloadLogEntry>();
+    for (const entry of [...(visitorStatsState.downloadLogs || []), ...remote.downloadLogs]) {
+      if (entry?.id && !map.has(entry.id)) map.set(entry.id, entry);
+    }
+    visitorStatsState.downloadLogs = Array.from(map.values())
+      .sort((a, b) => Date.parse(b.timestamp || '') - Date.parse(a.timestamp || ''))
+      .slice(0, 150);
+  }
+
+  const afterSig = `${visitorStatsState.totalVisits}:${visitorStatsState.totalDownloads}:${visitorStatsState.uniqueVisitorIds.length}:${visitorStatsState.visitLogs[0]?.id || ''}:${visitorStatsState.downloadLogs[0]?.id || ''}`;
+  return beforeSig !== afterSig;
+}
+
+async function upsertVisitorStatsToCloudSql(): Promise<void> {
+  try {
+    await pgQueryParams(
+      `INSERT INTO agritech_visitor_stats_store (store_key, state_json, updated_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (store_key) DO UPDATE SET
+         state_json = EXCLUDED.state_json,
+         updated_at = EXCLUDED.updated_at`,
+      ['global_stats', JSON.stringify(visitorStatsState), Date.now()],
+      false,
+      6000
+    );
+  } catch {}
+}
+
+let lastVisitorStatsSqlPullMs = 0;
+async function pullAndMergeVisitorStatsFromCloudSql(force = false): Promise<boolean> {
+  const now = Date.now();
+  if (!force && now - lastVisitorStatsSqlPullMs < 2000) return false;
+  lastVisitorStatsSqlPullMs = now;
+  try {
+    const rows = await pgQuery(
+      `SELECT state_json FROM agritech_visitor_stats_store WHERE store_key = 'global_stats' LIMIT 1;`
+    );
+    const rawJson = rows?.[0]?.[0];
+    if (!rawJson) return false;
+    const parsed = JSON.parse(rawJson);
+    const changed = mergeVisitorStatsState(parsed);
+    if (changed) {
+      persistVisitorStatsToFile();
+    }
+    return changed;
+  } catch {}
+  return false;
+}
+
 loadVisitorStatsFromFile();
 
 function pruneStaleVisitorSessions(): boolean {
@@ -6370,8 +6906,9 @@ function getVisitorStatsSnapshot() {
 }
 
 // 13. GET /api/analytics/visitors - Lấy dữ liệu thống kê truy cập chi tiết theo thời gian thực
-app.get('/api/analytics/visitors', (req: Request, res: Response) => {
+app.get('/api/analytics/visitors', async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  await pullAndMergeVisitorStatsFromCloudSql(false);
   res.json(getVisitorStatsSnapshot());
 });
 
@@ -6480,6 +7017,7 @@ app.post('/api/analytics/visit', (req: Request, res: Response) => {
   }
 
   persistVisitorStatsToFile();
+  void upsertVisitorStatsToCloudSql();
 
   const snapshot = getVisitorStatsSnapshot();
   broadcastSSE('visitor_stats_updated', snapshot);
@@ -6676,6 +7214,7 @@ app.post('/api/analytics/download', (req: Request, res: Response) => {
   visitorStatsState.visitLogs = [visitLogEntry, ...visitorStatsState.visitLogs].slice(0, 150);
 
   persistVisitorStatsToFile();
+  void upsertVisitorStatsToCloudSql();
 
   const snapshot = getVisitorStatsSnapshot();
   broadcastSSE('visitor_stats_updated', snapshot);

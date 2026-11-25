@@ -24,6 +24,10 @@ import {
 } from 'lucide-react';
 import { AuthUser } from '../types/auth';
 import { StudentProfile } from './StudentProfileCard';
+import {
+  subscribeRealtimeEvent,
+  onRealtimeConnectionChange,
+} from '../services/realtimeSyncService';
 
 export interface VisitLogEntry {
   id: string;
@@ -334,23 +338,22 @@ export const RealtimeVisitorStatsCard: React.FC<RealtimeVisitorStatsCardProps> =
       fetchSnapshot();
     }
 
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource('/api/submissions/stream');
-      es.onopen = () => setIsLiveConnected(true);
-      es.addEventListener('visitor_stats_updated', (ev: MessageEvent) => {
-        try {
-          const parsed = JSON.parse(ev.data);
-          if (parsed && parsed.success) {
-            setStats(parsed);
-            setIsLiveConnected(true);
-          }
-        } catch {}
-      });
-      es.onerror = () => {
-        setIsLiveConnected(false);
-      };
-    } catch {}
+    const unsubConn = onRealtimeConnectionChange((connected) => {
+      setIsLiveConnected(connected);
+    });
+
+    const unsubStats = subscribeRealtimeEvent('visitor_stats_updated', (parsed) => {
+      if (parsed && parsed.success && typeof parsed.totalVisits === 'number') {
+        setStats(parsed);
+        setIsLiveConnected(true);
+      } else {
+        fetchSnapshot();
+      }
+    });
+
+    const unsubAll = subscribeRealtimeEvent('sync_all_updated', () => {
+      fetchSnapshot();
+    });
 
     const heartbeatTimer = setInterval(() => {
       sendHeartbeat();
@@ -377,7 +380,9 @@ export const RealtimeVisitorStatsCard: React.FC<RealtimeVisitorStatsCardProps> =
       clearInterval(heartbeatTimer);
       window.removeEventListener('visitor_stats_local_updated', handleLocalUpdate);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (es) es.close();
+      unsubConn();
+      unsubStats();
+      unsubAll();
     };
   }, []);
 

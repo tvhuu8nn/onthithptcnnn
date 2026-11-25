@@ -8,6 +8,10 @@ import {
 import { MOCK_EXAMS } from '../data/mockExams';
 import { ALL_BUILTIN_EXAMS } from '../utils/qrExamShare';
 import { authService } from './authService';
+import {
+  subscribeRealtimeEvent,
+  notifyLocalDomainChange,
+} from './realtimeSyncService';
 
 const LOCAL_STORAGE_KEY = 'agritech_student_submissions_db';
 
@@ -460,6 +464,7 @@ export async function sendStudentScoreToAdmin(data: {
 
     if (res.ok) {
       const result = await res.json();
+      notifyLocalDomainChange('submission_added', result?.data || newSubmission);
       if (result && result.data) {
         return result.data;
       }
@@ -468,6 +473,7 @@ export async function sendStudentScoreToAdmin(data: {
     console.warn('Server POST failed (network offline):', err);
   }
 
+  notifyLocalDomainChange('submission_added', newSubmission);
   return newSubmission;
 }
 
@@ -493,6 +499,7 @@ export async function deleteSubmission(id: string): Promise<StudentSubmission[]>
     console.warn('Server delete error:', e);
   }
 
+  notifyLocalDomainChange('submission_deleted', { id });
   return updated;
 }
 
@@ -532,15 +539,18 @@ export function subscribeToLiveSubmissions(
   onNewSubmission: (submission: StudentSubmission) => void,
   onSyncList: (list: StudentSubmission[]) => void
 ): () => void {
-  let eventSource: EventSource | null = null;
   let isClosed = false;
 
+  const refreshFullList = (force = false) => {
+    fetchServerSubmissions(force).then((list) => {
+      if (!isClosed) {
+        onSyncList(list);
+      }
+    });
+  };
+
   // 1. Initial forced fetch from server (Cloud SQL + peer sync)
-  fetchServerSubmissions(true).then((list) => {
-    if (!isClosed) {
-      onSyncList(list);
-    }
-  });
+  refreshFullList(true);
 
   // Lắng nghe thêm sự kiện nộp bài tức thì trong cùng trình duyệt
   const handleLocalAdd = (ev: Event) => {
@@ -553,54 +563,33 @@ export function subscribeToLiveSubmissions(
     window.addEventListener('student_submission_added', handleLocalAdd);
   }
 
-  // 2. Connect Server-Sent Events (SSE)
-  if (typeof window !== 'undefined' && 'EventSource' in window) {
-    try {
-      eventSource = new EventSource('/api/submissions/stream');
-
-      eventSource.addEventListener('submission_added', (e: MessageEvent) => {
-        try {
-          const submission: StudentSubmission = JSON.parse(e.data);
-          onNewSubmission(submission);
-          // Also refresh full list
-          fetchServerSubmissions().then((list) => {
-            if (!isClosed) onSyncList(list);
-          });
-        } catch (err) {
-          console.warn('Failed to parse SSE submission_added', err);
-        }
-      });
-
-      eventSource.addEventListener('submission_deleted', () => {
-        fetchServerSubmissions().then((list) => {
-          if (!isClosed) onSyncList(list);
-        });
-      });
-
-      eventSource.addEventListener('submissions_reset', () => {
-        fetchServerSubmissions().then((list) => {
-          if (!isClosed) onSyncList(list);
-        });
-      });
-
-      eventSource.onerror = () => {
-        // EventSource will automatically retry connecting
-      };
-    } catch (err) {
-      console.warn('EventSource initialization notice:', err);
+  // 2. Subscribe via unified cross-platform / cross-device real-time sync hub
+  const unsubAdded = subscribeRealtimeEvent('submission_added', (payload) => {
+    if (isClosed) return;
+    if (payload && payload.studentName && !payload.refreshListOnly) {
+      onNewSubmission(payload as StudentSubmission);
     }
-  }
+    refreshFullList(false);
+  });
 
-  // 3. Resilient Polling Fallback every 4 seconds
+  const unsubDeleted = subscribeRealtimeEvent('submission_deleted', () => {
+    if (!isClosed) refreshFullList(false);
+  });
+
+  const unsubReset = subscribeRealtimeEvent('submissions_reset', () => {
+    if (!isClosed) refreshFullList(false);
+  });
+
+  const unsubAll = subscribeRealtimeEvent('sync_all_updated', () => {
+    if (!isClosed) refreshFullList(true);
+  });
+
+  // 3. Resilient background sync fallback every 8 seconds
   const pollInterval = setInterval(() => {
-    if (!isClosed) {
-      fetchServerSubmissions().then((list) => {
-        if (!isClosed) {
-          onSyncList(list);
-        }
-      });
+    if (!isClosed && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) {
+      refreshFullList(false);
     }
-  }, 4000);
+  }, 8000);
 
   // Return unsubscribe cleanup function
   return () => {
@@ -608,10 +597,10 @@ export function subscribeToLiveSubmissions(
     if (typeof window !== 'undefined') {
       window.removeEventListener('student_submission_added', handleLocalAdd);
     }
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
-    }
+    unsubAdded();
+    unsubDeleted();
+    unsubReset();
+    unsubAll();
     clearInterval(pollInterval);
   };
 }

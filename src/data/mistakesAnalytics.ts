@@ -1,5 +1,7 @@
 import { CognitiveLevel, GradeLevel, SubjectDomain } from '../types/exam';
 
+import { notifyLocalDomainChange } from '../services/realtimeSyncService';
+
 export interface StudentMistakeEntry {
   studentName: string;
   studentClass: string;
@@ -322,9 +324,13 @@ function syncMistakesToServerDebounced(records: Record<string, QuestionMistakeRe
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ records }),
-    }).catch(() => {
-      // ignore offline error
-    });
+    })
+      .then(() => {
+        notifyLocalDomainChange('mistakes_updated', { changedAt: Date.now() });
+      })
+      .catch(() => {
+        // ignore offline error
+      });
   }, 300);
 }
 

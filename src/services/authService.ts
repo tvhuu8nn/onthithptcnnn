@@ -1,4 +1,5 @@
 import { AuthUser, LoginCredentials, RegisterCredentials, AuthResponse, UserRole } from '../types/auth';
+import { notifyLocalDomainChange } from './realtimeSyncService';
 
 const STORAGE_KEY_USER = 'agritech_auth_user';
 const STORAGE_KEY_TOKEN = 'agritech_auth_token';
@@ -2087,6 +2088,7 @@ export const authService = {
         }
         // Also broadcast to /api/auth/sync-accounts so all custom accounts on this device are synced
         this.syncLocalCustomAccountsToServer().catch(() => {});
+        notifyLocalDomainChange('datauser_updated', { user: data.data, changedAt: Date.now() });
 
         const mergedUsers = Array.isArray(data.users)
           ? this.mergeUsersWithAdminCustom(data.users)
@@ -2202,6 +2204,7 @@ export const authService = {
       )
     );
 
+    notifyLocalDomainChange('datauser_updated', { action: 'delete', username: cleanU, changedAt: Date.now() });
     return true;
   },
 
@@ -2290,6 +2293,7 @@ export const authService = {
       )
     );
 
+    notifyLocalDomainChange('datauser_updated', { action: 'bulk_delete', usernames: cleanTargets, changedAt: Date.now() });
     return cleanTargets.length;
   },
 

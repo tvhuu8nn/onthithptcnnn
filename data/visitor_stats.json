@@ -1,0 +1,73 @@
+{
+  "totalVisits": 2,
+  "uniqueVisitorIds": [
+    "vis_1795346608331_ayxjh90"
+  ],
+  "dailyVisits": {
+    "2026-11-25": 2
+  },
+  "hourlyVisitsDate": "2026-11-25",
+  "hourlyVisits": {
+    "10": 1,
+    "09": 1
+  },
+  "tabViews": {
+    "exams": 4,
+    "chapter_review": 1,
+    "mistakes": 0,
+    "admin": 0,
+    "users": 0,
+    "traffic": 0,
+    "handbook": 0,
+    "matrix": 0,
+    "exam_taking": 0,
+    "provincial_exams": 1
+  },
+  "visitLogs": [
+    {
+      "id": "vlog_1795576745954_610",
+      "sessionId": "sess_1795576744227_jecca1",
+      "visitorId": "vis_1795346608331_ayxjh90",
+      "username": "admin",
+      "fullName": "Trần Văn Hữu",
+      "role": "admin",
+      "studentClass": "Tổ Công Nghệ Nông nghiệp",
+      "tab": "exams",
+      "tabLabel": "Đề Tham Khảo",
+      "action": "Nhấp vào link truy cập Web App",
+      "deviceType": "Máy tính (PC/Laptop)",
+      "browser": "Google Chrome",
+      "os": "Windows",
+      "timestamp": "2026-11-25T03:19:05.954Z"
+    },
+    {
+      "id": "vlog_1795574429471_643",
+      "sessionId": "sess_1795574429101_awk9x6",
+      "visitorId": "vis_1795346608331_ayxjh90",
+      "username": "admin",
+      "fullName": "Trần Văn Hữu",
+      "role": "admin",
+      "studentClass": "Tổ Công Nghệ Nông nghiệp",
+      "tab": "exams",
+      "tabLabel": "Đề Tham Khảo",
+      "action": "Nhấp vào link truy cập Web App",
+      "deviceType": "Máy tính (PC/Laptop)",
+      "browser": "Google Chrome",
+      "os": "Windows",
+      "timestamp": "2026-11-25T02:40:29.471Z"
+    }
+  ],
+  "totalDownloads": 0,
+  "dailyDownloads": {
+    "2026-11-25": 0
+  },
+  "downloadsByCategory": {
+    "de_thi_thpt": 0,
+    "on_tap_chuong": 0,
+    "de_lop_12": 0,
+    "de_lop_11": 0,
+    "de_lop_10": 0
+  },
+  "downloadsByUser": {},
+  "downloadLogs": []
+}
