@@ -735,15 +735,15 @@ export function parseStudentUrlParams(): {
   };
 
   const mode = getParam('mode');
-  const examParam =
+  const explicitExamParam =
     getParam('examId') ||
     getParam('exam') ||
-    getParam('code') ||
-    getParam('s') ||
     getParam('customCode') ||
     pathExamKey;
+  const codeParam = getParam('code') || getParam('s');
+  const examParam = explicitExamParam || (mode === 'student' ? codeParam : null);
 
-  if (mode !== 'student' && !examParam) {
+  if (mode !== 'student' && !explicitExamParam) {
     return null;
   }
 

@@ -27,16 +27,24 @@
   <body class="bg-slate-50 text-slate-900 antialiased font-sans">
     <div id="root">
       <div id="initial-loader-box" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;background:#f8fafc;font-family:system-ui,-apple-system,sans-serif;">
-        <div style="background:#ffffff;border:2px solid #10b981;border-radius:20px;padding:28px 24px;max-width:420px;width:100%;box-shadow:0 10px 25px -5px rgba(0,0,0,0.08);">
+        <div style="background:#ffffff;border:1px solid #d1fae5;border-radius:20px;padding:28px 24px;max-width:420px;width:100%;box-shadow:0 10px 25px -5px rgba(0,0,0,0.08);">
           <div style="display:inline-block;background:#ecfdf5;color:#065f46;font-weight:800;font-size:12px;padding:6px 12px;border-radius:999px;margin-bottom:12px;border:1px solid #a7f3d0;">
-            MÔN CÔNG NGHỆ NÔNG NGHIỆP THPT
+            CÔNG NGHỆ NÔNG NGHIỆP THPT
           </div>
-          <h1 style="margin:0 0 8px;font-size:18px;font-weight:800;color:#0f172a;">
-            Đang tải nội dung đề thi...
+          <h1 id="initial-loader-title" style="margin:0 0 8px;font-size:18px;font-weight:800;color:#0f172a;">
+            Đang tải hệ thống ôn thi...
           </h1>
-          <p style="margin:0;font-size:13px;color:#475569;line-height:1.5;">
-            Hệ thống đang đồng bộ câu hỏi trắc nghiệm. Vui lòng đợi trong giây lát.
+          <p id="initial-loader-desc" style="margin:0;font-size:13px;color:#475569;line-height:1.5;">
+            Đang khởi tạo giao diện giáo viên, học sinh và kho đề thi chuẩn GDPT 2018. Vui lòng đợi trong giây lát.
           </p>
+          <div id="portal-reload-fallback" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;">
+            <p style="margin:0 0 10px;font-size:12px;color:#64748b;">
+              Mạng đang phản hồi chậm. Nhấn nút bên dưới để tải lại giao diện chính.
+            </p>
+            <button type="button" onclick="window.location.reload()" style="padding:10px 18px;background:#059669;color:#ffffff;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;">
+              Tải lại hệ thống
+            </button>
+          </div>
           <div id="webview-fallback-form" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:left;">
             <label style="display:block;font-size:12px;font-weight:800;color:#065f46;margin-bottom:6px;text-transform:uppercase;">
               Nhập Mã Đề / Mã Phòng Thi để vào làm bài ngay:
@@ -58,25 +66,52 @@
           var code = overrideCode || (inp && inp.value ? inp.value.trim() : '101') || '101';
           window.location.href = '/thi/' + encodeURIComponent(code) + '?mode=student&code=' + encodeURIComponent(code) + '&__storage_access_granted=1';
         };
+        var isExplicitStudentExamRoute = false;
         try {
+          var pathname = window.location.pathname || '/';
+          var isStudentPath = /^\/(?:thi|s|exam)\/[^/?#]+/i.test(pathname);
           var search = new URLSearchParams(window.location.search || '');
           var hashRaw = (window.location.hash || '').replace(/^#/, '');
           if (hashRaw.indexOf('?') !== -1) hashRaw = hashRaw.substring(hashRaw.indexOf('?') + 1);
           var hash = new URLSearchParams(hashRaw);
-          var examKey = search.get('examId') || search.get('code') || search.get('s') || hash.get('examId') || hash.get('code') || hash.get('s');
-          var isStudent = search.get('mode') === 'student' || hash.get('mode') === 'student' || Boolean(examKey);
-          if (isStudent && window.location.pathname === '/') {
-            var targetKey = examKey || '101';
+          var explicitExamKey =
+            search.get('examId') ||
+            search.get('exam') ||
+            search.get('customCode') ||
+            hash.get('examId') ||
+            hash.get('exam') ||
+            hash.get('customCode');
+          var isStudentModeFlag = search.get('mode') === 'student' || hash.get('mode') === 'student';
+          var fallbackCodeKey = search.get('code') || search.get('s') || hash.get('code') || hash.get('s');
+          isExplicitStudentExamRoute = isStudentPath || isStudentModeFlag || Boolean(explicitExamKey);
+
+          if (isExplicitStudentExamRoute && (pathname === '/' || pathname === '/onthithptcnnn' || pathname === '/onthithptcnnn/')) {
+            var targetKey = explicitExamKey || fallbackCodeKey || '101';
             search.set('mode', 'student');
             search.set('__storage_access_granted', '1');
             window.location.replace('/thi/' + encodeURIComponent(targetKey) + '?' + search.toString());
             return;
           }
+
+          if (isExplicitStudentExamRoute) {
+            var titleEl = document.getElementById('initial-loader-title');
+            var descEl = document.getElementById('initial-loader-desc');
+            if (titleEl) titleEl.textContent = 'Đang tải nội dung đề thi...';
+            if (descEl) descEl.textContent = 'Hệ thống đang đồng bộ câu hỏi trắc nghiệm. Vui lòng đợi trong giây lát.';
+          }
         } catch (e) {}
-        setTimeout(function() {
-          var fb = document.getElementById('webview-fallback-form');
-          if (fb) fb.style.display = 'block';
-        }, 1800);
+
+        if (isExplicitStudentExamRoute) {
+          setTimeout(function() {
+            var fb = document.getElementById('webview-fallback-form');
+            if (fb) fb.style.display = 'block';
+          }, 2500);
+        } else {
+          setTimeout(function() {
+            var reloadFb = document.getElementById('portal-reload-fallback');
+            if (reloadFb) reloadFb.style.display = 'block';
+          }, 6000);
+        }
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>

@@ -9623,11 +9623,13 @@ async function handleStudentExamHtmlRequest(req: Request, res: Response, next: N
 
   const mode = String(req.query.mode || '').trim();
   const qExamId = String(req.query.examId || req.query.exam || '').trim();
-  const qCode = String(req.query.code || req.query.s || req.query.customCode || '').trim();
+  const qCustomCode = String(req.query.customCode || '').trim();
+  const qCode = String(req.query.code || req.query.s || qCustomCode || '').trim();
 
+  const isRootPath = req.path === '/' || req.path === '/onthithptcnnn' || req.path === '/onthithptcnnn/';
   const isStudentExamReq =
     Boolean(pathKey) ||
-    (req.path === '/' && (mode === 'student' || Boolean(qExamId) || Boolean(qCode)));
+    (isRootPath && (mode === 'student' || Boolean(qExamId) || Boolean(qCustomCode)));
 
   if (!isStudentExamReq) {
     return next();
@@ -9818,9 +9820,26 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(distPath));
+    app.use(
+      express.static(distPath, {
+        index: false,
+      })
+    );
+    app.use(
+      '/onthithptcnnn',
+      express.static(distPath, {
+        index: false,
+      })
+    );
     app.get('*', (req: Request, res: Response) => {
+      if (
+        /^\/(?:onthithptcnnn\/)?assets\//i.test(req.path) ||
+        /\.(?:js|mjs|css|map|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot|pdf)$/i.test(req.path)
+      ) {
+        return res.status(404).send('Asset not found');
+      }
       if (fs.existsSync(distIndexHtml)) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.sendFile(distIndexHtml);
       } else {
         res.status(404).send('Build not found. Please run npm run build.');
