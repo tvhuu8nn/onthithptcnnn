@@ -1379,7 +1379,7 @@ export default function App() {
                     </div>
 
                     <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
-                      Ôn Thi Tốt Nghiệp Môn Công Nghệ Nông Nghiệp
+                      Học liệu môn Công nghệ nông nghiệp
                     </h1>
 
                     <p className="text-sm sm:text-base text-emerald-100 max-w-2xl leading-relaxed">
@@ -2292,7 +2292,7 @@ export default function App() {
       {/* Clean Footer */}
       <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Hệ thống Ôn thi Tốt nghiệp THPT môn Công nghệ Nông nghiệp · GDPT 2018</span>
+          <span>Học liệu môn Công nghệ nông nghiệp · GDPT 2018</span>
           <div className="flex flex-wrap items-center justify-center gap-3 text-slate-500">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold text-[11px]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
