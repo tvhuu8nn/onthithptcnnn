@@ -9,19 +9,12 @@ import {
   Search,
   X,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Copy,
   Check,
   Sparkles,
   FileText,
   Network,
   Bookmark,
-  Eye,
-  EyeOff,
-  RotateCcw,
-  CheckSquare,
-  ListChecks,
   Download,
   FileDown,
   Printer,
@@ -46,7 +39,6 @@ import {
   Grade12ChapterFourExamsPanel,
   Grade12OverviewExamsSection,
 } from './Grade12ChapterFourExamsPanel';
-import { TrueFalseScenarioDisplay } from './TrueFalseScenarioDisplay';
 import { downloadHtmlAsDocx, trackDocumentDownload } from '../utils/examDownloader';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
@@ -83,25 +75,12 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
   >('all');
   const [selectedChapterId, setSelectedChapterId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedQuestions, setExpandedQuestions] = useState<Record<string, boolean>>({});
-  const [showAllAnswers, setShowAllAnswers] = useState<boolean>(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [downloadedId, setDownloadedId] = useState<string | null>(null);
 
   // Download tab options
   const [downloadMode, setDownloadMode] = useState<'full_guide' | 'student_exam'>('full_guide');
   const [downloadGradeFilter, setDownloadGradeFilter] = useState<'all' | '10' | '11' | '12'>('all');
-
-  // Per-chapter cognitive level filter ('all' | 'biet' | 'hieu' | 'vandung')
-  const [chapterLevelFilter, setChapterLevelFilter] = useState<
-    Record<string, 'all' | CognitiveLevel>
-  >({});
-
-  // Interactive user choices for MCQs: key = `${chapterId}-mcq-${qNumber}` -> 0..3
-  const [userMcqChoices, setUserMcqChoices] = useState<Record<string, number>>({});
-
-  // Interactive user choices for TF statements: key = `${chapterId}-tf-${qNumber}-${stmtKey}` -> boolean
-  const [userTfChoices, setUserTfChoices] = useState<Record<string, boolean>>({});
 
   const chaptersByGrade = CHAPTER_REVIEW_DATA.filter((item) => {
     if (
@@ -167,43 +146,6 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
       g.pages.toLowerCase().includes(q)
     );
   });
-
-  const toggleQuestionAnswer = (qKey: string) => {
-    setExpandedQuestions((prev) => ({
-      ...prev,
-      [qKey]: !(prev[qKey] ?? showAllAnswers),
-    }));
-  };
-
-  const isQuestionExpanded = (qKey: string) => {
-    if (qKey in expandedQuestions) {
-      return expandedQuestions[qKey];
-    }
-    return showAllAnswers;
-  };
-
-  const handleToggleAllAnswers = () => {
-    const nextState = !showAllAnswers;
-    setShowAllAnswers(nextState);
-    setExpandedQuestions({});
-  };
-
-  const handleResetChapterPractice = (chapterId: string) => {
-    setUserMcqChoices((prev) => {
-      const next = { ...prev };
-      Object.keys(next).forEach((k) => {
-        if (k.startsWith(`${chapterId}-mcq-`)) delete next[k];
-      });
-      return next;
-    });
-    setUserTfChoices((prev) => {
-      const next = { ...prev };
-      Object.keys(next).forEach((k) => {
-        if (k.startsWith(`${chapterId}-tf-`)) delete next[k];
-      });
-      return next;
-    });
-  };
 
   const getLevelBadge = (level: CognitiveLevel) => {
     switch (level) {
@@ -818,15 +760,6 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
     }
   };
 
-  const totalMcqShown = filteredChapters.reduce(
-    (acc, c) => acc + c.mcqQuestions.length,
-    0
-  );
-  const totalTfShown = filteredChapters.reduce(
-    (acc, c) => acc + (c.tfQuestions?.length ?? 0),
-    0
-  );
-
   const downloadListChapters = CHAPTER_REVIEW_DATA.filter((ch) => {
     if (downloadGradeFilter !== 'all' && ch.grade !== downloadGradeFilter) return false;
     const q = searchQuery.toLowerCase().trim();
@@ -981,27 +914,6 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
           {selectedGrade !== 'glossary' && selectedGrade !== 'download' && (
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={handleToggleAllAnswers}
-                className={`px-3.5 py-2.5 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  showAllAnswers
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                    : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
-                }`}
-              >
-                {showAllAnswers ? (
-                  <>
-                    <EyeOff className="w-3.5 h-3.5" />
-                    <span>Ẩn đáp án để tự luyện</span>
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Hiện toàn bộ đáp án & giải thích</span>
-                  </>
-                )}
-              </button>
-
-              <button
                 onClick={() => setSelectedGrade('download')}
                 className="px-3.5 py-2.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
               >
@@ -1042,14 +954,7 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs text-slate-500 font-medium">
             <div>
               Đang hiển thị{' '}
-              <strong className="text-emerald-800">{filteredChapters.length}</strong> chương ·{' '}
-              <strong className="text-emerald-800">{totalMcqShown}</strong> câu trắc nghiệm ABCD
-              {totalTfShown > 0 && (
-                <>
-                  {' '}
-                  + <strong className="text-emerald-800">{totalTfShown}</strong> câu Đúng/Sai ({totalTfShown * 4} ý)
-                </>
-              )}
+              <strong className="text-emerald-800">{filteredChapters.length}</strong> chương ôn tập SGK
             </div>
             {selectedGrade !== 'all' && (
               <button
@@ -1459,14 +1364,6 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
 
           {filteredChapters.map((chapter) => {
             const badge = getDomainBadge(chapter.domain);
-            const activeFilter = chapterLevelFilter[chapter.id] || 'all';
-            const bietCount = chapter.mcqQuestions.filter((q) => q.level === 'biet').length;
-            const hieuCount = chapter.mcqQuestions.filter((q) => q.level === 'hieu').length;
-            const vandungCount = chapter.mcqQuestions.filter((q) => q.level === 'vandung').length;
-
-            const displayedMcqs = chapter.mcqQuestions.filter((q) =>
-              activeFilter === 'all' ? true : q.level === activeFilter
-            );
 
             return (
               <article
@@ -1560,25 +1457,6 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
                         </>
                       );
                     })()}
-
-                    <button
-                      onClick={() => {
-                        if (!currentUser) {
-                          onRequireLogin?.('Vui lòng đăng nhập tài khoản để làm bài thi trong mục Tài nguyên!');
-                          return;
-                        }
-                        if (!canTakeExam) {
-                          onRequireVipUpgrade?.();
-                          return;
-                        }
-                        handleResetChapterPractice(chapter.id);
-                      }}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 transition-all flex items-center gap-1.5 cursor-pointer"
-                      title="Xóa các lựa chọn vừa làm thử trong chương này"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Làm lại</span>
-                    </button>
 
                     <button
                       onClick={() => handleCopyChapter(chapter)}
@@ -1775,471 +1653,6 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
                       </div>
                     </div>
                   )}
-
-                  {/* SECTION 3: Ngân hàng câu hỏi trắc nghiệm ôn tập chương */}
-                  <div className="space-y-5 pt-2 border-t border-slate-200">
-                    {/* Header + Matrix Summary + QR Assignment + Level Filter */}
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                      <div className="space-y-1.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <ListChecks className="w-4 h-4 text-emerald-700 shrink-0" />
-                          <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 uppercase tracking-wider">
-                            {`3. Câu Hỏi Trắc Nghiệm Ôn Tập Chương (${chapter.mcqQuestions.length} Câu Nhiều Lựa Chọn & ${chapter.tfQuestions?.length ?? 4} Câu Đúng/Sai)`}
-                          </h3>
-                        </div>
-                        <p className="text-xs text-slate-600">
-                          {chapter.grade === '12' ? (
-                            <>
-                              Cấu trúc chuẩn:{' '}
-                              <strong>
-                                Phần I gồm 30 câu nhiều lựa chọn (12 Biết · 9 Thông hiểu · 9 Vận dụng)
-                              </strong>{' '}
-                              và{' '}
-                              <strong>
-                                Phần II gồm 4 câu Đúng/Sai × 4 ý (1 ý Biết · 1 ý Hiểu · 2 ý Vận dụng)
-                              </strong>
-                              . Đáp án thiết kế ngắn gọn, đúng trọng tâm câu hỏi.
-                            </>
-                          ) : (
-                            <>
-                              Cấu trúc chuẩn:{' '}
-                              <strong>
-                                Phần I gồm 35 câu trắc nghiệm (20 câu Nhận biết · 10 câu Thông hiểu · 5 câu Vận dụng)
-                              </strong>{' '}
-                              và{' '}
-                              <strong>
-                                Phần II gồm 4 câu Đúng/Sai × 4 ý (1 ý Biết · 1 ý Hiểu · 2 ý Vận dụng) có tình huống thực tế và dẫn nguồn cụ thể
-                              </strong>
-                              .
-                            </>
-                          )}
-                        </p>
-                      </div>
-
-                      {/* QR Code Assignment Button + Filter pills by cognitive level */}
-                      <div className="flex flex-wrap items-center gap-2 text-xs shrink-0">
-                        {(() => {
-                          const chExam = [
-                            ...GRADE_10_CHAPTER_EXAMS,
-                            ...GRADE_11_CHAPTER_EXAMS,
-                            ...GRADE_12_SINGLE_CHAPTER_EXAMS,
-                          ].find((e) => e.id === `exam-${chapter.id}`);
-                          if (!chExam) return null;
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => onAssignQr?.(chExam)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-extrabold bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-                              title={
-                                !currentUser
-                                  ? 'Cần đăng nhập tài khoản để tạo mã QR giao câu hỏi ôn tập chương cho học sinh'
-                                  : `Tạo mã QR giao câu hỏi ôn tập ${chapter.chapterNumber} (${chExam.partI.length} câu TN + ${chExam.partII.length} câu Đúng/Sai) cho học sinh`
-                              }
-                            >
-                              {!currentUser ? (
-                                <Lock className="w-3.5 h-3.5 text-amber-300" />
-                              ) : (
-                                <QrCode className="w-3.5 h-3.5 text-amber-300" />
-                              )}
-                              <span>Mã QR Giao Câu Hỏi Ôn Tập</span>
-                            </button>
-                          );
-                        })()}
-
-                        <button
-                          onClick={() =>
-                            setChapterLevelFilter((prev) => ({ ...prev, [chapter.id]: 'all' }))
-                          }
-                          className={`px-2.5 py-1.5 rounded-lg font-bold border transition-all cursor-pointer ${
-                            activeFilter === 'all'
-                              ? 'bg-slate-900 text-white border-slate-900'
-                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          Tất cả ({chapter.mcqQuestions.length})
-                        </button>
-                        <button
-                          onClick={() =>
-                            setChapterLevelFilter((prev) => ({ ...prev, [chapter.id]: 'biet' }))
-                          }
-                          className={`px-2.5 py-1.5 rounded-lg font-bold border transition-all cursor-pointer ${
-                            activeFilter === 'biet'
-                              ? 'bg-sky-700 text-white border-sky-700'
-                              : 'bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100'
-                          }`}
-                        >
-                          Biết ({bietCount})
-                        </button>
-                        <button
-                          onClick={() =>
-                            setChapterLevelFilter((prev) => ({ ...prev, [chapter.id]: 'hieu' }))
-                          }
-                          className={`px-2.5 py-1.5 rounded-lg font-bold border transition-all cursor-pointer ${
-                            activeFilter === 'hieu'
-                              ? 'bg-amber-700 text-white border-amber-700'
-                              : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
-                          }`}
-                        >
-                          Thông hiểu ({hieuCount})
-                        </button>
-                        {vandungCount > 0 && (
-                          <button
-                            onClick={() =>
-                              setChapterLevelFilter((prev) => ({
-                                ...prev,
-                                [chapter.id]: 'vandung',
-                              }))
-                            }
-                            className={`px-2.5 py-1.5 rounded-lg font-bold border transition-all cursor-pointer ${
-                              activeFilter === 'vandung'
-                                ? 'bg-purple-700 text-white border-purple-700'
-                                : 'bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100'
-                            }`}
-                          >
-                            Vận dụng ({vandungCount})
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* PART I: Multiple Choice Questions */}
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2 bg-emerald-900 text-white px-4 py-2.5 rounded-lg text-xs sm:text-sm font-bold">
-                        <span>
-                          {chapter.grade === '12'
-                            ? 'PHẦN I. CÂU TRẮC NGHIỆM NHIỀU LỰA CHỌN (30 CÂU: 12 BIẾT · 9 THÔNG HIỂU · 9 VẬN DỤNG)'
-                            : 'PHẦN I. CÂU TRẮC NGHIỆM NHIỀU LỰA CHỌN (35 CÂU: 20 CÂU NHẬN BIẾT · 10 CÂU THÔNG HIỂU · 5 CÂU VẬN DỤNG)'}
-                        </span>
-                        <span className="text-emerald-200 text-xs font-normal hidden sm:inline">
-                          Chọn phương án A, B, C hoặc D để kiểm tra nhanh
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {displayedMcqs.map((q) => {
-                          const qKey = `${chapter.id}-mcq-${q.number}`;
-                          const expanded = isQuestionExpanded(qKey);
-                          const lvBadge = getLevelBadge(q.level);
-                          const userSelected = userMcqChoices[qKey];
-                          const hasAnswered = userSelected !== undefined;
-
-                          return (
-                            <div
-                              key={q.number}
-                              className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-2xs"
-                            >
-                              {/* Question Header */}
-                              <div className="px-4 py-3 bg-slate-50/80 border-b border-slate-100 flex items-start justify-between gap-3">
-                                <div className="flex items-start gap-2.5 text-xs sm:text-sm font-bold text-slate-900">
-                                  <span className="px-2 py-0.5 rounded bg-slate-900 text-white text-xs font-extrabold shrink-0">
-                                    Câu {q.number}
-                                  </span>
-                                  <span
-                                    className={`px-2 py-0.5 rounded border text-[11px] font-bold shrink-0 ${lvBadge.cls}`}
-                                  >
-                                    {lvBadge.fullLabel}
-                                  </span>
-                                  <span className="leading-relaxed">{q.question}</span>
-                                </div>
-
-                                <button
-                                  onClick={() => toggleQuestionAnswer(qKey)}
-                                  className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 shrink-0 mt-0.5 cursor-pointer"
-                                  title="Đóng/mở đáp án và giải thích"
-                                >
-                                  {expanded ? (
-                                    <ChevronUp className="w-4 h-4 text-slate-600" />
-                                  ) : (
-                                    <ChevronDown className="w-4 h-4 text-slate-600" />
-                                  )}
-                                </button>
-                              </div>
-
-                              {/* 4 Balanced Options Grid */}
-                              <div className="p-3.5 sm:p-4 grid grid-cols-1 md:grid-cols-2 gap-2.5 bg-white">
-                                {q.options.map((optText, optIdx) => {
-                                  const isCorrect = optIdx === q.correctIndex;
-                                  const isChosen = userSelected === optIdx;
-                                  const revealAnswer = expanded || hasAnswered;
-
-                                  let optionStyle =
-                                    'border-slate-200 bg-slate-50/60 hover:bg-slate-100/80 text-slate-800';
-                                  let badgeStyle =
-                                    'bg-white text-slate-700 border border-slate-300';
-
-                                  if (revealAnswer) {
-                                    if (isCorrect) {
-                                      optionStyle =
-                                        'border-emerald-500 bg-emerald-50/90 text-emerald-950 font-semibold ring-1 ring-emerald-500/40';
-                                      badgeStyle = 'bg-emerald-600 text-white border-emerald-600';
-                                    } else if (isChosen && !isCorrect) {
-                                      optionStyle =
-                                        'border-rose-400 bg-rose-50 text-rose-950 line-through opacity-90';
-                                      badgeStyle = 'bg-rose-600 text-white border-rose-600';
-                                    }
-                                  }
-
-                                  return (
-                                    <button
-                                      key={optIdx}
-                                      type="button"
-                                      onClick={() => {
-                                        if (!currentUser) {
-                                          onRequireLogin?.('Vui lòng đăng nhập tài khoản để làm bài thi trong mục Tài nguyên!');
-                                          return;
-                                        }
-                                        if (!canTakeExam) {
-                                          onRequireVipUpgrade?.();
-                                          return;
-                                        }
-                                        setUserMcqChoices((prev) => ({
-                                          ...prev,
-                                          [qKey]: optIdx,
-                                        }));
-                                      }}
-                                      className={`w-full h-full text-left p-3 rounded-lg border transition-all flex items-start gap-2.5 text-xs sm:text-[13px] leading-relaxed cursor-pointer ${optionStyle}`}
-                                    >
-                                      <span
-                                        className={`w-6 h-6 rounded-md font-extrabold text-xs flex items-center justify-center shrink-0 mt-0.5 ${badgeStyle}`}
-                                      >
-                                        {OPTION_LABELS[optIdx]}
-                                      </span>
-                                      <span className="flex-1">{optText}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Explanation Footer */}
-                              {(expanded || hasAnswered) && (
-                                <div className="px-4 py-3 bg-emerald-50/50 border-t border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-700">
-                                  <div>
-                                    <span className="font-extrabold text-emerald-800 mr-2">
-                                      Đáp án đúng: {OPTION_LABELS[q.correctIndex]}
-                                    </span>
-                                    {hasAnswered && (
-                                      <span
-                                        className={`font-bold mr-2 px-2 py-0.5 rounded ${
-                                          userSelected === q.correctIndex
-                                            ? 'bg-emerald-100 text-emerald-800'
-                                            : 'bg-rose-100 text-rose-800'
-                                        }`}
-                                      >
-                                        {userSelected === q.correctIndex
-                                          ? '✓ Bạn chọn chính xác'
-                                          : `✗ Bạn đã chọn ${OPTION_LABELS[userSelected]}`}
-                                      </span>
-                                    )}
-                                    <span className="text-slate-700">{q.explanation}</span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* PART II: True/False Questions (4 questions x 4 statements) */}
-                    {chapter.tfQuestions && chapter.tfQuestions.length > 0 && (
-                      <div className="space-y-3 pt-4 border-t border-slate-200">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 bg-sky-900 text-white px-4 py-3 rounded-lg">
-                          <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
-                            <CheckSquare className="w-4 h-4 text-amber-300 shrink-0" />
-                            <span>
-                              PHẦN II. CÂU TRẮC NGHIỆM ĐÚNG / SAI (4 CÂU: 1 CÂU PHÂN TÍCH BIỂU ĐỒ · 1 CÂU PHÂN TÍCH BẢNG SỐ LIỆU · 2 CÂU TÌNH HUỐNG THỰC TIỄN)
-                            </span>
-                          </div>
-                          <span className="text-sky-200 text-xs">
-                            Trong mỗi ý a), b), c), d), học sinh chọn Đúng hoặc Sai
-                          </span>
-                        </div>
-
-                        <div className="space-y-4">
-                          {chapter.tfQuestions.map((tf) => {
-                            const tfKey = `${chapter.id}-tf-${tf.number}`;
-                            const expanded = isQuestionExpanded(tfKey);
-
-                            return (
-                              <div
-                                key={tf.number}
-                                className="rounded-xl border border-sky-200 overflow-hidden bg-white shadow-2xs"
-                              >
-                                {/* TF Stem */}
-                                <div className="px-4 py-3.5 bg-sky-50/70 border-b border-sky-200/80 flex items-start justify-between gap-3">
-                                  <div className="space-y-1.5 text-xs sm:text-sm text-slate-900 flex-1 min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="px-2.5 py-0.5 rounded bg-sky-900 text-white text-xs font-extrabold">
-                                        Câu Đúng/Sai {tf.number}
-                                      </span>
-                                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-white text-sky-900 border border-sky-200">
-                                        4 ý trả lời (1 Biết · 1 Hiểu · 2 Vận dụng)
-                                      </span>
-                                      {tf.chartData ? (
-                                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
-                                          Phân tích biểu đồ
-                                        </span>
-                                      ) : tf.tableData ? (
-                                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-300">
-                                          Phân tích bảng số liệu
-                                        </span>
-                                      ) : (
-                                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                          Tình huống thực tế
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="pt-1">
-                                      <TrueFalseScenarioDisplay
-                                        question={{
-                                          id: tfKey,
-                                          number: tf.number,
-                                          domain: chapter.domain,
-                                          scenarioTitle: chapter.chapterTitle,
-                                          scenario: tf.context,
-                                          citation: tf.citation,
-                                          chartData: tf.chartData,
-                                          tableData: tf.tableData,
-                                          statements: [] as unknown as Exam['partII'][number]['statements'],
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    onClick={() => toggleQuestionAnswer(tfKey)}
-                                    className="text-xs font-semibold text-sky-800 hover:text-sky-950 flex items-center gap-1 shrink-0 mt-0.5 cursor-pointer"
-                                  >
-                                    {expanded ? (
-                                      <ChevronUp className="w-4 h-4" />
-                                    ) : (
-                                      <ChevronDown className="w-4 h-4" />
-                                    )}
-                                  </button>
-                                </div>
-
-                                {/* 4 Statements (a, b, c, d) with uniform lengths */}
-                                <div className="divide-y divide-slate-100">
-                                  {tf.statements.map((stmt) => {
-                                    const stmtChoiceKey = `${chapter.id}-tf-${tf.number}-${stmt.label}`;
-                                    const userChoice = userTfChoices[stmtChoiceKey];
-                                    const hasChosen = userChoice !== undefined;
-                                    const showResult = expanded || hasChosen;
-                                    const lvBadge = getLevelBadge(stmt.level);
-
-                                    return (
-                                      <div
-                                        key={stmt.label}
-                                        className="p-3.5 sm:p-4 bg-white hover:bg-slate-50/60 transition-colors space-y-2"
-                                      >
-                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                                          <div className="flex items-start gap-2.5 text-xs sm:text-[13px] text-slate-900 leading-relaxed flex-1">
-                                            <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-extrabold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                                              {stmt.label})
-                                            </span>
-                                            <span
-                                              className={`px-2 py-0.5 rounded border text-[11px] font-bold shrink-0 mt-0.5 ${lvBadge.cls}`}
-                                            >
-                                              Ý {lvBadge.label}
-                                            </span>
-                                            <span className="flex-1 font-medium">{stmt.text}</span>
-                                          </div>
-
-                                          {/* Interactive Đúng / Sai Buttons */}
-                                          <div className="flex items-center gap-2 shrink-0 self-end lg:self-center">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                if (!currentUser) {
-                                                  onRequireLogin?.('Vui lòng đăng nhập tài khoản để làm bài thi trong mục Tài nguyên!');
-                                                  return;
-                                                }
-                                                if (!canTakeExam) {
-                                                  onRequireVipUpgrade?.();
-                                                  return;
-                                                }
-                                                setUserTfChoices((prev) => ({
-                                                  ...prev,
-                                                  [stmtChoiceKey]: true,
-                                                }));
-                                              }}
-                                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                                                showResult && stmt.isTrue
-                                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                                                  : userChoice === true && !stmt.isTrue
-                                                  ? 'bg-rose-600 text-white border-rose-600'
-                                                  : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-emerald-50'
-                                              }`}
-                                            >
-                                              Đúng
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                if (!currentUser) {
-                                                  onRequireLogin?.('Vui lòng đăng nhập tài khoản để làm bài thi trong mục Tài nguyên!');
-                                                  return;
-                                                }
-                                                if (!canTakeExam) {
-                                                  onRequireVipUpgrade?.();
-                                                  return;
-                                                }
-                                                setUserTfChoices((prev) => ({
-                                                  ...prev,
-                                                  [stmtChoiceKey]: false,
-                                                }));
-                                              }}
-                                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                                                showResult && !stmt.isTrue
-                                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                                                  : userChoice === false && stmt.isTrue
-                                                  ? 'bg-rose-600 text-white border-rose-600'
-                                                  : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-amber-50'
-                                              }`}
-                                            >
-                                              Sai
-                                            </button>
-                                          </div>
-                                        </div>
-
-                                        {showResult && (
-                                          <div className="pl-8 text-xs text-slate-600 flex flex-wrap items-center gap-2">
-                                            <span
-                                              className={`font-extrabold px-2 py-0.5 rounded ${
-                                                stmt.isTrue
-                                                  ? 'bg-emerald-100 text-emerald-900'
-                                                  : 'bg-amber-100 text-amber-900'
-                                              }`}
-                                            >
-                                              Đáp án: {stmt.isTrue ? 'ĐÚNG' : 'SAI'}
-                                            </span>
-                                            {hasChosen && (
-                                              <span
-                                                className={`font-bold ${
-                                                  userChoice === stmt.isTrue
-                                                    ? 'text-emerald-700'
-                                                    : 'text-rose-600'
-                                                }`}
-                                              >
-                                                {userChoice === stmt.isTrue
-                                                  ? '(✓ Chính xác)'
-                                                  : '(✗ Chưa đúng)'}
-                                              </span>
-                                            )}
-                                            <span>{stmt.explanation}</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </article>
             );

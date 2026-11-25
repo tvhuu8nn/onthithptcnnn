@@ -329,12 +329,15 @@ export function getAllSubmissions(): StudentSubmission[] {
 /**
  * Tải danh sách điểm thi mới nhất từ máy chủ (đồng bộ từ tất cả máy học sinh & giáo viên)
  */
-export async function fetchServerSubmissions(): Promise<StudentSubmission[]> {
+export async function fetchServerSubmissions(force = false): Promise<StudentSubmission[]> {
   try {
-    const res = await fetch('/api/submissions?__storage_access_granted=1', {
-      headers: { Accept: 'application/json' },
-      cache: 'no-cache',
-    });
+    const res = await fetch(
+      `/api/submissions?__storage_access_granted=1&_t=${Date.now()}${force ? '&force=1' : ''}`,
+      {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      }
+    );
 
     if (res.ok) {
       const data = await res.json();
@@ -396,9 +399,14 @@ export async function sendStudentScoreToAdmin(data: {
   teacherName?: string;
   examPaper?: StudentExamPaper;
 }): Promise<StudentSubmission> {
+  const normalizedTeacherUsername = data.teacherUsername
+    ? String(data.teacherUsername).replace(/^@+/, '').trim()
+    : undefined;
+
   const newSubmission: StudentSubmission = {
     id: `sub_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     ...data,
+    teacherUsername: normalizedTeacherUsername,
     submittedAt: new Date().toISOString(),
     rank: getRankFromScore(data.totalScore),
   };
@@ -419,6 +427,27 @@ export async function sendStudentScoreToAdmin(data: {
     }
   }
 
+  const bodyStr = JSON.stringify(newSubmission);
+
+  // Đồng bộ chéo sang domain đối ứng (ais-dev <-> ais-pre) để bảng điểm giáo viên luôn nhận ngay lập tức
+  if (typeof window !== 'undefined') {
+    try {
+      const origin = window.location.origin;
+      const peerOrigin = origin.includes('//ais-dev-')
+        ? origin.replace('//ais-dev-', '//ais-pre-')
+        : origin.includes('//ais-pre-')
+        ? origin.replace('//ais-pre-', '//ais-dev-')
+        : '';
+      if (peerOrigin) {
+        fetch(`${peerOrigin}/api/submissions?__storage_access_granted=1`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: bodyStr,
+        }).catch(() => {});
+      }
+    } catch {}
+  }
+
   // 2. Gửi ngay lên máy chủ trung tâm để giáo viên nhận điểm & bài làm tức thì
   try {
     const res = await fetch('/api/submissions?__storage_access_granted=1', {
@@ -426,7 +455,7 @@ export async function sendStudentScoreToAdmin(data: {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(newSubmission),
+      body: bodyStr,
     });
 
     if (res.ok) {
@@ -506,12 +535,23 @@ export function subscribeToLiveSubmissions(
   let eventSource: EventSource | null = null;
   let isClosed = false;
 
-  // 1. Initial fetch from server
-  fetchServerSubmissions().then((list) => {
+  // 1. Initial forced fetch from server (Cloud SQL + peer sync)
+  fetchServerSubmissions(true).then((list) => {
     if (!isClosed) {
       onSyncList(list);
     }
   });
+
+  // Lắng nghe thêm sự kiện nộp bài tức thì trong cùng trình duyệt
+  const handleLocalAdd = (ev: Event) => {
+    const customEv = ev as CustomEvent<StudentSubmission>;
+    if (!isClosed && customEv?.detail) {
+      onNewSubmission(customEv.detail);
+    }
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('student_submission_added', handleLocalAdd);
+  }
 
   // 2. Connect Server-Sent Events (SSE)
   if (typeof window !== 'undefined' && 'EventSource' in window) {
@@ -551,7 +591,7 @@ export function subscribeToLiveSubmissions(
     }
   }
 
-  // 3. Resilient Polling Fallback every 4.5 seconds
+  // 3. Resilient Polling Fallback every 4 seconds
   const pollInterval = setInterval(() => {
     if (!isClosed) {
       fetchServerSubmissions().then((list) => {
@@ -560,11 +600,14 @@ export function subscribeToLiveSubmissions(
         }
       });
     }
-  }, 4500);
+  }, 4000);
 
   // Return unsubscribe cleanup function
   return () => {
     isClosed = true;
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('student_submission_added', handleLocalAdd);
+    }
     if (eventSource) {
       eventSource.close();
       eventSource = null;

@@ -70,10 +70,16 @@ export const AdminScoreDashboard: React.FC<AdminScoreDashboardProps> = ({
     setAccountScope(currentUser ? 'mine' : 'all');
   }, [currentUser?.username]);
 
+  const normalizeAccountKey = (u?: string) =>
+    String(u || '')
+      .trim()
+      .replace(/^@+/, '')
+      .toLowerCase();
+
   const handleManualRefresh = async () => {
     setIsSyncing(true);
     try {
-      const list = await fetchServerSubmissions();
+      const list = await fetchServerSubmissions(true);
       setSubmissions(list);
       setLastSyncedAt(new Date());
     } finally {
@@ -88,11 +94,15 @@ export const AdminScoreDashboard: React.FC<AdminScoreDashboardProps> = ({
     // 2. Real-time multi-device subscription (SSE + Polling Fallback)
     const unsubscribe = subscribeToLiveSubmissions(
       (newSub) => {
-        const isForCurrentUser =
+        // Cập nhật ngay vào danh sách hiển thị không cần đợi vòng lặp kế tiếp
+        setSubmissions((prev) => [newSub, ...prev.filter((s) => s.id !== newSub.id)]);
+
+        const isForCurrentUser = Boolean(
           currentUser &&
-          newSub.teacherUsername &&
-          newSub.teacherUsername.trim().toLowerCase() ===
-            currentUser.username.trim().toLowerCase();
+            newSub.teacherUsername &&
+            normalizeAccountKey(newSub.teacherUsername) ===
+              normalizeAccountKey(currentUser.username)
+        );
 
         if (isForCurrentUser) {
           setAccountScope('mine');
@@ -125,9 +135,9 @@ export const AdminScoreDashboard: React.FC<AdminScoreDashboardProps> = ({
 
   const myAccountSubmissions = React.useMemo(() => {
     if (!currentUser) return [];
-    const targetUser = currentUser.username.trim().toLowerCase();
+    const targetUser = normalizeAccountKey(currentUser.username);
     return submissions.filter(
-      (s) => String(s.teacherUsername || '').trim().toLowerCase() === targetUser
+      (s) => normalizeAccountKey(s.teacherUsername) === targetUser
     );
   }, [submissions, currentUser]);
 

@@ -1227,9 +1227,17 @@ async function ensureSharedCloudSqlStore(): Promise<void> {
         is_deleted BOOLEAN DEFAULT FALSE,
         updated_at BIGINT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS agritech_submissions_store (
+        submission_id VARCHAR(200) PRIMARY KEY,
+        teacher_username VARCHAR(120),
+        submission_json TEXT NOT NULL,
+        is_deleted BOOLEAN DEFAULT FALSE,
+        updated_at BIGINT NOT NULL
+      );
       GRANT ALL PRIVILEGES ON TABLE agritech_datauser_store TO PUBLIC;
       GRANT ALL PRIVILEGES ON TABLE agritech_qr_assignments_store TO PUBLIC;
       GRANT ALL PRIVILEGES ON TABLE agritech_uploaded_exams_store TO PUBLIC;
+      GRANT ALL PRIVILEGES ON TABLE agritech_submissions_store TO PUBLIC;
       GRANT ALL PRIVILEGES ON TABLE users TO PUBLIC;`,
       true
     );
@@ -1724,6 +1732,12 @@ setTimeout(async () => {
       );
     }
     await loadAssignmentsFromCloudSql();
+    await pullAndMergeSubmissionsFromCloudSqlAndPeers(undefined, true);
+    for (const sub of inMemorySubmissions) {
+      if (!sub?.id || String(sub.id).startsWith('sub_0') || String(sub.id) === 'sub_10') continue;
+      if (deletedSubmissionIdsSet.has(String(sub.id))) continue;
+      await upsertSubmissionToCloudSql(sub);
+    }
   } catch {}
 }, 800);
 
@@ -4614,8 +4628,213 @@ app.get('/api/submissions/stream', (req: Request, res: Response) => {
   });
 });
 
+// Shared Cloud SQL & Cross-Origin (ais-dev <-> ais-pre) submission sync
+const deletedSubmissionIdsSet = new Set<string>();
+let lastSubmissionsRemoteSyncMs = 0;
+
+function normalizeTeacherUsernameServer(raw?: any): string {
+  return cleanAuthString(String(raw || '')).replace(/^@+/, '').trim();
+}
+
+async function upsertSubmissionToCloudSql(sub: any): Promise<void> {
+  if (!sub?.id) return;
+  const subId = String(sub.id).slice(0, 200);
+  const teacherKey = normalizeTeacherUsernameServer(sub.teacherUsername).toLowerCase().slice(0, 120);
+  const subJson = JSON.stringify(sub);
+  const nowMs = Date.now();
+  try {
+    await pgQueryParams(
+      `INSERT INTO agritech_submissions_store (submission_id, teacher_username, submission_json, is_deleted, updated_at)
+       VALUES ($1, $2, $3, FALSE, $4)
+       ON CONFLICT (submission_id) DO UPDATE SET
+         teacher_username = EXCLUDED.teacher_username,
+         submission_json = EXCLUDED.submission_json,
+         is_deleted = FALSE,
+         updated_at = EXCLUDED.updated_at`,
+      [subId, teacherKey, subJson, nowMs],
+      false,
+      8000
+    );
+  } catch {}
+}
+
+async function deleteSubmissionFromCloudSql(subId: string): Promise<void> {
+  const cleanId = String(subId || '').trim().slice(0, 200);
+  if (!cleanId) return;
+  const nowMs = Date.now();
+  try {
+    await pgQueryParams(
+      `INSERT INTO agritech_submissions_store (submission_id, teacher_username, submission_json, is_deleted, updated_at)
+       VALUES ($1, '', '{}', TRUE, $2)
+       ON CONFLICT (submission_id) DO UPDATE SET
+         is_deleted = TRUE,
+         updated_at = EXCLUDED.updated_at`,
+      [cleanId, nowMs],
+      false,
+      6000
+    );
+  } catch {}
+}
+
+async function replicateSubmissionUpsertToPeers(sub: any, req?: Request): Promise<void> {
+  if (!sub || isPeerReplicatedRequest(req)) return;
+  const peers = getPeerOrigins(req);
+  await Promise.allSettled(
+    peers.map(async (peer) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
+      try {
+        await fetch(`${peer}/api/submissions?peerReplicated=1&__storage_access_granted=1`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Peer-Replicated': '1',
+          },
+          body: JSON.stringify({ ...sub, peerReplicated: true }),
+          signal: controller.signal,
+        });
+      } catch {
+      } finally {
+        clearTimeout(timer);
+      }
+    })
+  );
+}
+
+async function replicateSubmissionDeleteToPeers(subId: string, req?: Request): Promise<void> {
+  if (!subId || isPeerReplicatedRequest(req)) return;
+  const peers = getPeerOrigins(req);
+  await Promise.allSettled(
+    peers.map(async (peer) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2500);
+      try {
+        await fetch(`${peer}/api/submissions/${encodeURIComponent(subId)}?peerReplicated=1`, {
+          method: 'DELETE',
+          headers: { 'X-Peer-Replicated': '1' },
+          signal: controller.signal,
+        });
+      } catch {
+      } finally {
+        clearTimeout(timer);
+      }
+    })
+  );
+}
+
+async function pullAndMergeSubmissionsFromCloudSqlAndPeers(
+  req?: Request,
+  force = false
+): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastSubmissionsRemoteSyncMs < 2200) return;
+  lastSubmissionsRemoteSyncMs = now;
+
+  let changed = false;
+  const existingMap = new Map<string, any>();
+  inMemorySubmissions.forEach((s) => {
+    if (s && s.id) existingMap.set(String(s.id), s);
+  });
+  const newlyDiscovered: any[] = [];
+
+  // 1. Đọc từ Cloud SQL dùng chung (đồng bộ tức thì giữa ais-dev, ais-pre và mọi Cloud Run instance)
+  try {
+    const rows = await pgQuery(
+      `SELECT submission_id, submission_json, is_deleted FROM agritech_submissions_store ORDER BY updated_at ASC;`,
+      false
+    );
+    for (const row of rows) {
+      const sid = String(row[0] || '').trim();
+      const sJson = row[1];
+      const isDel = row[2] === 't' || row[2] === 'true';
+      if (!sid) continue;
+      if (isDel) {
+        deletedSubmissionIdsSet.add(sid);
+        if (existingMap.delete(sid)) {
+          changed = true;
+        }
+        continue;
+      }
+      if (!sJson) continue;
+      try {
+        const parsed = JSON.parse(sJson);
+        if (parsed && parsed.id) {
+          const prev = existingMap.get(String(parsed.id));
+          if (!prev) {
+            existingMap.set(String(parsed.id), parsed);
+            newlyDiscovered.push(parsed);
+            changed = true;
+          } else if (
+            (!prev.teacherUsername && parsed.teacherUsername) ||
+            (!prev.examPaper && parsed.examPaper)
+          ) {
+            existingMap.set(String(parsed.id), { ...prev, ...parsed });
+            changed = true;
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+
+  // 2. Dự phòng kéo thêm từ peer origin (ais-dev <-> ais-pre) nếu Cloud SQL tạm gián đoạn
+  if (!isPeerReplicatedRequest(req)) {
+    const peers = getPeerOrigins(req);
+    for (const peer of peers) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2000);
+      try {
+        const peerRes = await fetch(`${peer}/api/submissions?peerReplicated=1`, {
+          headers: { 'X-Peer-Replicated': '1' },
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (peerRes.ok) {
+          const payload = await peerRes.json();
+          if (payload?.success && Array.isArray(payload.data)) {
+            for (const item of payload.data) {
+              if (!item || !item.id) continue;
+              const sid = String(item.id);
+              if (deletedSubmissionIdsSet.has(sid)) continue;
+              const prev = existingMap.get(sid);
+              if (!prev) {
+                existingMap.set(sid, item);
+                newlyDiscovered.push(item);
+                changed = true;
+              } else if (
+                (!prev.teacherUsername && item.teacherUsername) ||
+                (!prev.examPaper && item.examPaper)
+              ) {
+                existingMap.set(sid, { ...prev, ...item });
+                changed = true;
+              }
+            }
+          }
+        }
+      } catch {
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  if (changed) {
+    inMemorySubmissions = Array.from(existingMap.values()).sort(
+      (a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
+    );
+    persistSubmissionsToFile();
+    newlyDiscovered.forEach((sub) => {
+      broadcastSSE('submission_added', sub);
+    });
+  }
+}
+
 // 3. GET all submissions across all students & devices
-app.get('/api/submissions', (req: Request, res: Response) => {
+app.get('/api/submissions', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  if (!isPeerReplicatedRequest(req)) {
+    const forceRefresh = String(req.query.force || '') === '1';
+    await pullAndMergeSubmissionsFromCloudSqlAndPeers(req, forceRefresh);
+  }
   res.json({
     success: true,
     count: inMemorySubmissions.length,
@@ -4624,37 +4843,85 @@ app.get('/api/submissions', (req: Request, res: Response) => {
 });
 
 // 4. POST student score submission
-app.post('/api/submissions', (req: Request, res: Response) => {
+app.post('/api/submissions', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   const body = req.body;
   if (!body || !body.studentName) {
     return res.status(400).json({ error: 'Missing student submission data' });
   }
 
-  // Tự động xác định tài khoản người dùng đã giao bài thi này cho học sinh
+  // Tự động xác định chính xác tài khoản giáo viên/người dùng đã giao bài thi này cho học sinh
   const rawExamId = String(body.examId || '').trim();
   const rawExamCode = String(body.examCode || '').trim();
-  const assignedRecord =
-    (rawExamId &&
-      (sharedAssignmentsMap.get(rawExamId) ||
-        sharedAssignmentsMap.get(rawExamId.toLowerCase()))) ||
-    (rawExamCode &&
-      (sharedAssignmentsMap.get(rawExamCode) ||
-        sharedAssignmentsMap.get(rawExamCode.toLowerCase()))) ||
-    sharedAssignmentsMap.get('__latest_active__');
+  let teacherUsername = normalizeTeacherUsernameServer(body.teacherUsername);
+  let teacherName = String(body.teacherName || '').trim();
 
-  let teacherUsername = String(
-    body.teacherUsername || assignedRecord?.config?.teacherUsername || ''
-  ).trim();
-  let teacherName = String(
-    body.teacherName || assignedRecord?.config?.teacherName || ''
-  ).trim();
+  if (!teacherUsername) {
+    let assignedRecord =
+      (rawExamId &&
+        (sharedAssignmentsMap.get(rawExamId) ||
+          sharedAssignmentsMap.get(rawExamId.toLowerCase()))) ||
+      (rawExamCode &&
+        (sharedAssignmentsMap.get(rawExamCode) ||
+          sharedAssignmentsMap.get(rawExamCode.toLowerCase()))) ||
+      null;
+
+    if (!assignedRecord && (rawExamId || rawExamCode)) {
+      assignedRecord = await lookupAssignmentFromCloudSqlOrPeers(
+        rawExamId || rawExamCode,
+        '',
+        req
+      );
+    }
+
+    if (assignedRecord?.config?.teacherUsername) {
+      teacherUsername = normalizeTeacherUsernameServer(assignedRecord.config.teacherUsername);
+      if (!teacherName && assignedRecord.config.teacherName) {
+        teacherName = String(assignedRecord.config.teacherName).trim();
+      }
+    }
+
+    // Nếu là tài liệu/đề người dùng tự tải lên mà chưa có teacherUsername, gắn về đúng chủ sở hữu tài liệu
+    if (!teacherUsername && (rawExamId || rawExamCode)) {
+      const matchedUploaded = sharedUploadedExams.find(
+        (u) =>
+          u &&
+          ((rawExamId && String(u.id || '').toLowerCase() === rawExamId.toLowerCase()) ||
+            (rawExamCode && String(u.code || '').toLowerCase() === rawExamCode.toLowerCase()))
+      );
+      const ownerUser = normalizeTeacherUsernameServer(matchedUploaded?.uploadedBy);
+      if (ownerUser && ownerUser.toLowerCase() !== 'guest') {
+        teacherUsername = ownerUser;
+        if (!teacherName && matchedUploaded?.uploadedByFullName) {
+          teacherName = String(matchedUploaded.uploadedByFullName).trim();
+        }
+      }
+    }
+
+    // Chỉ fallback sang __latest_active__ nếu đúng trùng mã đề/ID đề đang giao
+    if (!teacherUsername) {
+      const latestActive = sharedAssignmentsMap.get('__latest_active__');
+      const latestId = String(latestActive?.exam?.id || '').toLowerCase();
+      const latestCode = String(latestActive?.exam?.code || '').toLowerCase();
+      if (
+        latestActive?.config?.teacherUsername &&
+        ((rawExamId && latestId === rawExamId.toLowerCase()) ||
+          (rawExamCode && latestCode === rawExamCode.toLowerCase()))
+      ) {
+        teacherUsername = normalizeTeacherUsernameServer(latestActive.config.teacherUsername);
+        if (!teacherName && latestActive.config.teacherName) {
+          teacherName = String(latestActive.config.teacherName).trim();
+        }
+      }
+    }
+  }
 
   if (teacherUsername && !teacherName) {
     const { users } = loadDataUsers(false);
     const matchedTeacher = users.find(
       (u) =>
-        cleanAuthString(u.username).toLowerCase() ===
-        cleanAuthString(teacherUsername).toLowerCase()
+        cleanAuthString(u.username).replace(/^@+/, '').toLowerCase() ===
+        teacherUsername.toLowerCase()
     );
     if (matchedTeacher?.fullName) {
       teacherName = matchedTeacher.fullName;
@@ -4684,9 +4951,20 @@ app.post('/api/submissions', (req: Request, res: Response) => {
     examPaper: body.examPaper || undefined,
   };
 
+  deletedSubmissionIdsSet.delete(String(newSubmission.id));
+
   // Prepend new submission so it appears at top of teacher scoreboard
-  inMemorySubmissions = [newSubmission, ...inMemorySubmissions.filter((s) => s.id !== newSubmission.id)];
+  inMemorySubmissions = [
+    newSubmission,
+    ...inMemorySubmissions.filter((s) => s.id !== newSubmission.id),
+  ];
   persistSubmissionsToFile();
+
+  // Lưu ngay vào Cloud SQL dùng chung và đồng bộ sang máy chủ đối ứng (ais-dev <-> ais-pre)
+  if (!isPeerReplicatedRequest(req)) {
+    await upsertSubmissionToCloudSql(newSubmission);
+    replicateSubmissionUpsertToPeers(newSubmission, req).catch(() => {});
+  }
 
   // Broadcast to all connected teachers' screens immediately
   broadcastSSE('submission_added', newSubmission);
@@ -4699,10 +4977,17 @@ app.post('/api/submissions', (req: Request, res: Response) => {
 });
 
 // 5. DELETE a submission
-app.delete('/api/submissions/:id', (req: Request, res: Response) => {
+app.delete('/api/submissions/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (id) {
+    deletedSubmissionIdsSet.add(String(id));
+  }
   inMemorySubmissions = inMemorySubmissions.filter((s) => s.id !== id);
   persistSubmissionsToFile();
+  if (!isPeerReplicatedRequest(req)) {
+    await deleteSubmissionFromCloudSql(String(id));
+    replicateSubmissionDeleteToPeers(String(id), req).catch(() => {});
+  }
   broadcastSSE('submission_deleted', { id });
   res.json({ success: true, id });
 });
@@ -8524,8 +8809,9 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
           var corrInQ = 0;
           var stDetails = [];
 
-          for (var k = 0; k < tf.statements.length; k++) {
-            var stmt = tf.statements[k];
+          var tfStmts = Array.isArray(tf.statements) ? tf.statements : [];
+          for (var k = 0; k < tfStmts.length; k++) {
+            var stmt = tfStmts[k];
             var uChoice = stMap[stmt.subId];
             var normalizedChoice = (uChoice === true || uChoice === false) ? uChoice : null;
             var stmtCorr = normalizedChoice === stmt.isCorrect;
@@ -8589,6 +8875,7 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
             '</div>' +
             '<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">' +
               '<button type="button" onclick="window.location.reload()" style="padding:9px 16px;border-radius:10px;border:none;background:#fde68a;color:#78350f;font-weight:800;cursor:pointer;">🔄 Làm Lại Đề Này</button>' +
+              '<button type="button" id="retrySyncBtn" onclick="window.retrySubmissionSync()" style="display:none;padding:9px 16px;border-radius:10px;border:1px solid #6ee7b7;background:#065f46;color:#ffffff;font-weight:800;cursor:pointer;">📤 Gửi Lại Điểm Về Giáo Viên</button>' +
             '</div>' +
           '</div>';
 
@@ -8599,53 +8886,117 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
         renderQuestions();
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        fetch('/api/submissions?__storage_access_granted=1', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            studentName: studentName,
-            studentClass: studentClass,
-            studentId: studentId,
-            examId: exam.id,
-            examCode: exam.code,
-            examTitle: exam.title,
-            totalScore: totalScore,
-            partIScore: partIScore,
-            partIIScore: partIIScore,
-            partICorrectCount: partICorrectCount,
-            partIICorrectCount: partIICorrectCount,
-            timeSpentSeconds: timeSpentSeconds,
-            violationCount: violationCount,
-            isAutoCollected: Boolean(isAutoCollect || isAutoCollectedBySystem || violationCount >= MAX_VIOLATIONS),
-            teacherUsername: config.teacherUsername || '',
-            teacherName: config.teacherName || '',
-            rank: rank,
-            examPaper: {
-              partI: answersPartI,
-              partII: answersPartII,
-              partIII: answersPartIII,
-              partIDetails: partIDetails,
-              partIIDetails: partIIDetails
+        var urlParams = null;
+        try {
+          urlParams = new URLSearchParams(window.location.search || '');
+        } catch (e) {}
+        var resolvedTeacherUser = String(
+          config.teacherUsername ||
+          (urlParams && (urlParams.get('teacher') || urlParams.get('t'))) ||
+          ''
+        ).replace(/^@+/, '').trim();
+        var resolvedTeacherName = String(
+          config.teacherName ||
+          (urlParams && urlParams.get('teacherName')) ||
+          ''
+        ).trim();
+
+        var submissionPayloadObj = {
+          id: 'sub_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+          studentName: studentName,
+          studentClass: studentClass,
+          studentId: studentId,
+          examId: exam.id,
+          examCode: exam.code,
+          examTitle: exam.title,
+          totalScore: totalScore,
+          partIScore: partIScore,
+          partIIScore: partIIScore,
+          partICorrectCount: partICorrectCount,
+          partIICorrectCount: partIICorrectCount,
+          timeSpentSeconds: timeSpentSeconds,
+          violationCount: violationCount,
+          isAutoCollected: Boolean(isAutoCollect || isAutoCollectedBySystem || violationCount >= MAX_VIOLATIONS),
+          teacherUsername: resolvedTeacherUser,
+          teacherName: resolvedTeacherName,
+          submittedAt: new Date().toISOString(),
+          rank: rank,
+          examPaper: {
+            partI: answersPartI,
+            partII: answersPartII,
+            partIII: answersPartIII,
+            partIDetails: partIDetails,
+            partIIDetails: partIIDetails
+          }
+        };
+        var submissionPayloadStr = JSON.stringify(submissionPayloadObj);
+
+        function postToPeerBackup() {
+          try {
+            var curOrigin = String(window.location.origin || '');
+            var peerOrigin = curOrigin.indexOf('//ais-dev-') !== -1
+              ? curOrigin.replace('//ais-dev-', '//ais-pre-')
+              : (curOrigin.indexOf('//ais-pre-') !== -1 ? curOrigin.replace('//ais-pre-', '//ais-dev-') : '');
+            if (peerOrigin) {
+              fetch(peerOrigin + '/api/submissions?__storage_access_granted=1', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: submissionPayloadStr
+              }).catch(function() {});
             }
+          } catch (e) {}
+        }
+
+        function submitToServerWithRetry(attempt) {
+          var badge = document.getElementById('syncStatusBadge');
+          var retryBtn = document.getElementById('retrySyncBtn');
+          if (retryBtn) retryBtn.style.display = 'none';
+          if (badge && attempt > 1) {
+            badge.textContent = '⏳ Đang thử đồng bộ lại điểm về Bảng Điểm Giáo Viên (lần ' + attempt + ')...';
+          }
+          fetch('/api/submissions?__storage_access_granted=1', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: submissionPayloadStr
           })
-        })
-          .then(function(res) { return res.json(); })
-          .then(function() {
-            var badge = document.getElementById('syncStatusBadge');
-            if (badge) {
-              var teacherLabel = config.teacherName
-                ? (config.teacherName + (config.teacherUsername ? ' (@' + config.teacherUsername + ')' : ''))
-                : (config.teacherUsername ? '@' + config.teacherUsername : 'Giáo Viên');
-              badge.textContent = '✅ Đã lưu và đồng bộ điểm + bài làm về Bảng Điểm của tài khoản ' + teacherLabel + ' thành công!';
-              badge.style.color = '#6ee7b7';
-            }
-          })
-          .catch(function() {
-            var badge = document.getElementById('syncStatusBadge');
-            if (badge) {
-              badge.textContent = '⚠️ Đã chấm điểm trên thiết bị (mạng yếu, chưa đồng bộ được về máy chủ).';
-            }
-          });
+            .then(function(res) {
+              if (!res.ok) throw new Error('HTTP ' + res.status);
+              return res.json();
+            })
+            .then(function(result) {
+              postToPeerBackup();
+              var savedSub = (result && result.data) || submissionPayloadObj;
+              var tUser = savedSub.teacherUsername || resolvedTeacherUser;
+              var tName = savedSub.teacherName || resolvedTeacherName;
+              if (badge) {
+                var teacherLabel = tName
+                  ? (tName + (tUser ? ' (@' + tUser + ')' : ''))
+                  : (tUser ? '@' + tUser : 'Giáo Viên');
+                badge.textContent = '✅ Đã lưu và đồng bộ điểm + bài làm về Bảng Điểm của tài khoản ' + teacherLabel + ' thành công!';
+                badge.style.color = '#6ee7b7';
+              }
+            })
+            .catch(function() {
+              if (attempt < 3) {
+                setTimeout(function() {
+                  submitToServerWithRetry(attempt + 1);
+                }, 1200 * attempt);
+              } else {
+                postToPeerBackup();
+                if (badge) {
+                  badge.textContent = '⚠️ Mạng đang chập chờn, chưa đồng bộ được về máy chủ. Hãy nhấn nút "Gửi Lại Điểm Về Giáo Viên" bên dưới.';
+                  badge.style.color = '#fde68a';
+                }
+                if (retryBtn) retryBtn.style.display = 'inline-block';
+              }
+            });
+        }
+
+        window.retrySubmissionSync = function() {
+          submitToServerWithRetry(1);
+        };
+
+        submitToServerWithRetry(1);
 
         if (Object.keys(mistakesPayload).length > 0) {
           fetch('/api/mistakes?__storage_access_granted=1', {
