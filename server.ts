@@ -3466,7 +3466,8 @@ app.post('/api/custom-exams', async (req: Request, res: Response) => {
       examId: exam.id,
       examCode: exam.code,
       durationMinutes: exam.durationMinutes || 50,
-      shuffleQuestions: false,
+      shuffleQuestions: true,
+      shuffleOptions: true,
       showSolutionsAfterSubmit: true,
     },
     updatedAt: new Date().toISOString(),
@@ -5468,7 +5469,8 @@ try {
           examId: exam.id,
           examCode: exam.code,
           durationMinutes: exam.durationMinutes || 50,
-          shuffleQuestions: false,
+          shuffleQuestions: true,
+          shuffleOptions: true,
           showSolutionsAfterSubmit: true,
         },
         updatedAt: exam.uploadedAt || new Date().toISOString(),
@@ -5685,7 +5687,8 @@ app.post('/api/uploaded-exams', async (req: Request, res: Response) => {
         examId: normalizedExam.id,
         examCode: normalizedExam.code,
         durationMinutes: normalizedExam.durationMinutes || 50,
-        shuffleQuestions: false,
+        shuffleQuestions: true,
+        shuffleOptions: true,
         showSolutionsAfterSubmit: true,
       },
       updatedAt: new Date().toISOString(),
@@ -8140,12 +8143,19 @@ function hashStringSeedServer(str: string): number {
   return h >>> 0 || 123456789;
 }
 
+const POSITIONAL_OPTION_PATTERN_SERVER =
+  /(?:cả\s+(?:hai|ba|bốn|2|3|4|[a-d])\b|tất\s+cả\s+(?:các\s+)?(?:đáp\s+án|phương\s+án|ý|câu|trên|đều)|(?:đáp\s+án|phương\s+án|ý)\s+(?:a|b|c|d|trên)\b|(?:a|b|c)\s*(?:,|và|&)\s*(?:b|c|d)\s*(?:đều|đúng|sai)|cả\s+[a-d]\s*(?:,|và)\s*[a-d]|trên\s+đây\s+đều)/i;
+
+const POSITIONAL_TF_STMT_PATTERN_SERVER =
+  /(?:ý\s+[a-d]\)|nhận\s+định\s+[a-d]\b|phát\s+biểu\s+[a-d]\b|cả\s+[a-d]\s*(?:,|và)\s*[a-d]|tất\s+cả\s+(?:các\s+)?ý\s+trên)/i;
+
 function prepareExamForStudentOnServer(
   exam: any,
   shuffleQuestions?: boolean,
-  seedKey?: string
+  seedKey?: string,
+  shuffleOptions: boolean = true
 ): any {
-  if (!shuffleQuestions || !exam || !Array.isArray(exam.partI) || exam.partI.length <= 1) {
+  if (!shuffleQuestions || !exam) {
     return exam;
   }
   let a = hashStringSeedServer(seedKey || `${exam.id}_${exam.code}`);
@@ -8157,20 +8167,96 @@ function prepareExamForStudentOnServer(
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 
-  const clonedPartI = [...exam.partI];
-  for (let i = clonedPartI.length - 1; i > 0; i--) {
-    const j = Math.floor(nextRand() * (i + 1));
-    const temp = clonedPartI[i];
-    clonedPartI[i] = clonedPartI[j];
-    clonedPartI[j] = temp;
-  }
-  const renumberedPartI = clonedPartI.map((q: any, idx: number) => ({
-    ...q,
-    number: idx + 1,
-  }));
+  const shuffleArray = <T,>(arr: T[]): T[] => {
+    const cloned = [...arr];
+    for (let i = cloned.length - 1; i > 0; i--) {
+      const j = Math.floor(nextRand() * (i + 1));
+      const temp = cloned[i];
+      cloned[i] = cloned[j];
+      cloned[j] = temp;
+    }
+    return cloned;
+  };
+
+  // 1. Shuffle Part I questions + safely shuffle A/B/C/D options
+  const partISource = Array.isArray(exam.partI) ? exam.partI : [];
+  const shuffledPartI = partISource.length > 1 ? shuffleArray(partISource) : [...partISource];
+  const optionLetters = ['A', 'B', 'C', 'D'];
+
+  const renumberedPartI = shuffledPartI.map((q: any, idx: number) => {
+    let nextOptions = q.options;
+    let nextCorrectAnswer = q.correctAnswer;
+
+    if (shuffleOptions && q.options && typeof q.options === 'object') {
+      const entries = optionLetters.map((letter) => ({
+        letter,
+        text: String(q.options[letter] ?? ''),
+      }));
+      const hasPositionalRef = entries.some((e) => POSITIONAL_OPTION_PATTERN_SERVER.test(e.text));
+      if (!hasPositionalRef && entries.every((e) => e.text.length > 0)) {
+        const shuffledEntries = shuffleArray(entries);
+        const remappedOptions: Record<string, string> = { ...q.options };
+        let mappedCorrect = q.correctAnswer;
+        shuffledEntries.forEach((entry, oIdx) => {
+          const newLetter = optionLetters[oIdx];
+          remappedOptions[newLetter] = entry.text;
+          if (entry.letter === q.correctAnswer) {
+            mappedCorrect = newLetter;
+          }
+        });
+        nextOptions = remappedOptions;
+        nextCorrectAnswer = mappedCorrect;
+      }
+    }
+
+    return {
+      ...q,
+      number: idx + 1,
+      options: nextOptions,
+      correctAnswer: nextCorrectAnswer,
+    };
+  });
+
+  // 2. Shuffle Part II questions + safely shuffle a/b/c/d statements
+  const partIISource = Array.isArray(exam.partII) ? exam.partII : [];
+  const shuffledPartII = partIISource.length > 1 ? shuffleArray(partIISource) : [...partIISource];
+  const subLetters = ['a', 'b', 'c', 'd'];
+
+  const renumberedPartII = shuffledPartII.map((tf: any, idx: number) => {
+    let nextStatements = tf.statements;
+    if (shuffleOptions && Array.isArray(tf.statements) && tf.statements.length === 4) {
+      const hasPositionalStmt = tf.statements.some((st: any) =>
+        POSITIONAL_TF_STMT_PATTERN_SERVER.test(String(st?.text || ''))
+      );
+      if (!hasPositionalStmt) {
+        nextStatements = shuffleArray(tf.statements).map((st: any, sIdx: number) => ({
+          ...st,
+          subId: subLetters[sIdx],
+        }));
+      }
+    }
+    return {
+      ...tf,
+      number: idx + 1,
+      statements: nextStatements,
+    };
+  });
+
+  // 3. Shuffle Part III questions if present
+  const partIIISource = Array.isArray(exam.partIII) ? exam.partIII : undefined;
+  const renumberedPartIII =
+    partIIISource && partIIISource.length > 1
+      ? shuffleArray(partIIISource).map((sa: any, idx: number) => ({
+          ...sa,
+          number: idx + 1,
+        }))
+      : partIIISource;
+
   return {
     ...exam,
     partI: renumberedPartI,
+    partII: renumberedPartII,
+    ...(renumberedPartIII !== undefined ? { partIII: renumberedPartIII } : {}),
   };
 }
 
@@ -8213,6 +8299,7 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
       className,
       durationMinutes,
       shuffleQuestions: Boolean(config.shuffleQuestions),
+      shuffleOptions: config.shuffleOptions !== false,
       showSolutionsAfterSubmit,
       teacherNote,
       teacherUsername,
@@ -9006,6 +9093,13 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
       <div class="exam-meta">
         Cấu trúc đề: ${partIList.length} câu Trắc nghiệm 4 lựa chọn &amp; ${partIIList.length} câu Đúng/Sai (${partIIList.length * 4} ý)${partIIIList.length > 0 ? ` &amp; ${partIIIList.length} câu Trả lời ngắn / Tự luận` : ''}
       </div>
+      ${
+        config.shuffleQuestions
+          ? `<div style="margin-top:8px;font-size:12px;font-weight:800;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;padding:6px 10px;border-radius:10px;display:inline-block;">🔀 Đề thi đã tự động xáo trộn câu hỏi${
+              config.shuffleOptions !== false ? ' &amp; đáp án' : ''
+            } riêng cho bạn</div>`
+          : ''
+      }
       ${
         teacherUsername || teacherName
           ? `<div style="margin-top:8px;font-size:12px;font-weight:700;color:#065f46;background:#d1fae5;padding:6px 10px;border-radius:10px;display:inline-block;">👨‍🏫 Giáo viên giao bài: <strong>${escapeHtmlServer(
@@ -10709,8 +10803,15 @@ async function handleStudentExamHtmlRequest(req: Request, res: Response, next: N
 
   const shuffleQuestions =
     req.query.shuffle !== undefined
-      ? String(req.query.shuffle) === '1'
-      : Boolean(savedCfg.shuffleQuestions);
+      ? String(req.query.shuffle) !== '0'
+      : savedCfg.shuffleQuestions !== undefined
+      ? Boolean(savedCfg.shuffleQuestions)
+      : true;
+
+  const shuffleOptions =
+    req.query.shuffleOpt !== undefined
+      ? String(req.query.shuffleOpt) !== '0'
+      : savedCfg.shuffleOptions !== false;
 
   const showSolutionsAfterSubmit =
     req.query.solutions !== undefined
@@ -10740,10 +10841,16 @@ async function handleStudentExamHtmlRequest(req: Request, res: Response, next: N
     }
   }
 
+  // Tạo hạt giống xáo trộn ngẫu nhiên riêng cho từng học sinh mỗi khi mở link/quét mã QR
+  const perStudentShuffleSeed = `${resolvedExam.id}_${resolvedExam.code}_${Date.now()}_${crypto
+    .randomBytes(6)
+    .toString('hex')}`;
+
   const finalExam = prepareExamForStudentOnServer(
     resolvedExam,
     shuffleQuestions,
-    `${resolvedExam.id}_${resolvedExam.code}`
+    perStudentShuffleSeed,
+    shuffleOptions
   );
 
   // Kiểm tra khóa link QR: nếu Giáo viên đã bấm "Kết thúc bài thi ngay", chặn học sinh mới truy cập vào làm thêm
@@ -10767,6 +10874,7 @@ async function handleStudentExamHtmlRequest(req: Request, res: Response, next: N
     className,
     durationMinutes,
     shuffleQuestions,
+    shuffleOptions,
     showSolutionsAfterSubmit,
     teacherNote,
     teacherUsername,

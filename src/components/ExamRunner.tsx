@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   AlertTriangle,
   QrCode,
+  Shuffle,
 } from 'lucide-react';
 import { TrueFalseScenarioDisplay } from './TrueFalseScenarioDisplay';
 import { DocumentTable } from './DocumentTable';
@@ -37,6 +38,7 @@ interface ExamRunnerProps {
   isPausedForEntry?: boolean;
   teacherNote?: string;
   assignedTeacherUsername?: string;
+  isShuffledForStudent?: boolean;
   onUpdateStudentInfo?: (info: {
     name: string;
     studentClass: string;
@@ -56,6 +58,7 @@ export const ExamRunner: React.FC<ExamRunnerProps> = ({
   isPausedForEntry = false,
   teacherNote,
   assignedTeacherUsername,
+  isShuffledForStudent = false,
   onUpdateStudentInfo,
   onAssignQr,
 }) => {
@@ -660,6 +663,12 @@ export const ExamRunner: React.FC<ExamRunnerProps> = ({
                   <span className="px-2 py-0.5 rounded-full bg-emerald-800/90 border border-emerald-500/60 text-[10px] font-bold text-emerald-100">
                     ∞ Giao bài 1 lần · Làm bài không giới hạn bất cứ thời gian nào
                   </span>
+                  {isShuffledForStudent && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/60 text-[10px] font-bold text-amber-200">
+                      <Shuffle className="w-3 h-3" />
+                      <span>Đề đã tự động xáo trộn riêng cho bạn</span>
+                    </span>
+                  )}
                 </div>
                 <span className="text-[11px] text-emerald-200">
                   Nhập họ tên &amp; lớp để lưu kết quả vào Bảng Điểm Giáo Viên

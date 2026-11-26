@@ -4,6 +4,7 @@ import { Exam } from '../types/exam';
 import {
   ALL_BUILTIN_EXAMS,
   ExamAssignmentConfig,
+  createUniqueShuffleSeed,
   generateStudentExamUrl,
   getSavedAssignmentConfig,
   prepareExamForStudent,
@@ -46,6 +47,7 @@ interface AssignExamQRModalProps {
       durationMinutes: number;
       teacherNote?: string;
       shuffleQuestions?: boolean;
+      shuffleOptions?: boolean;
       teacherUsername?: string;
       teacherName?: string;
     }
@@ -68,7 +70,9 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
   const [durationMinutes, setDurationMinutes] = useState<number>(
     initialExam.durationMinutes || 50
   );
-  const [shuffleQuestions, setShuffleQuestions] = useState<boolean>(false);
+  const [shuffleQuestions, setShuffleQuestions] = useState<boolean>(true);
+  const [shuffleOptions, setShuffleOptions] = useState<boolean>(true);
+  const [previewSeedNonce, setPreviewSeedNonce] = useState<number>(1);
   const [showSolutionsAfterSubmit, setShowSolutionsAfterSubmit] =
     useState<boolean>(true);
   const [teacherNote, setTeacherNote] = useState<string>(
@@ -106,7 +110,9 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
     const saved = getSavedAssignmentConfig(initialExam);
     setClassName(saved.className || 'Ôn THPT');
     setDurationMinutes(saved.durationMinutes || initialExam.durationMinutes || 50);
-    setShuffleQuestions(Boolean(saved.shuffleQuestions));
+    setShuffleQuestions(saved.shuffleQuestions !== false);
+    setShuffleOptions(saved.shuffleOptions !== false);
+    setPreviewSeedNonce(1);
     setShowSolutionsAfterSubmit(saved.showSolutionsAfterSubmit !== false);
     setTeacherNote(
       saved.teacherNote ||
@@ -126,16 +132,23 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
     className: className.trim() || 'Ôn THPT',
     durationMinutes: durationMinutes || selectedExam.durationMinutes || 50,
     shuffleQuestions,
+    shuffleOptions,
     showSolutionsAfterSubmit,
     teacherNote: teacherNote.trim(),
     teacherUsername: currentUser?.username || undefined,
     teacherName: currentUser?.fullName || currentUser?.username || undefined,
   };
 
-  // Đề thi thực tế mà học sinh sẽ nhận được khi quét mã QR (đã áp dụng cấu hình đảo câu nếu bật)
+  // Đề thi xem trước minh họa một bản xáo trộn mà học sinh sẽ nhận được khi quét mã QR
   const synchronizedStudentExam = React.useMemo(
-    () => prepareExamForStudent(selectedExam, shuffleQuestions),
-    [selectedExam, shuffleQuestions]
+    () =>
+      prepareExamForStudent(
+        selectedExam,
+        shuffleQuestions,
+        `${selectedExam.id}_${selectedExam.code}_preview_${previewSeedNonce}`,
+        shuffleOptions
+      ),
+    [selectedExam, shuffleQuestions, shuffleOptions, previewSeedNonce]
   );
 
   // Tự động đồng bộ nội dung đề thi và cấu hình lên máy chủ mỗi khi thay đổi đề hoặc cấu hình
@@ -165,6 +178,7 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
     className,
     durationMinutes,
     shuffleQuestions,
+    shuffleOptions,
     showSolutionsAfterSubmit,
     teacherNote,
     currentUser?.username,
@@ -335,7 +349,8 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
                 fgColor="#064e3b"
               />
               <div className="mt-2.5 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-mono font-bold text-emerald-900 text-center">
-                MÃ ĐỀ: {selectedExam.code} • {durationMinutes} PHÚT • KHÔNG GIỚI HẠN LƯỢT &amp; THỜI GIAN
+                MÃ ĐỀ: {selectedExam.code} • {durationMinutes} PHÚT •{' '}
+                {shuffleQuestions ? 'TỰ ĐỘNG XÁO TRỘN RIÊNG TỪNG HS' : 'GIỮ NGUYÊN THỨ TỰ GỐC'}
               </div>
             </div>
 
@@ -384,11 +399,18 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
                   type="button"
                   onClick={() => {
                     syncAssignmentToServer(selectedExam, currentConfig);
-                    onStartDirect(synchronizedStudentExam, {
+                    const freshExamForAttempt = prepareExamForStudent(
+                      selectedExam,
+                      shuffleQuestions,
+                      createUniqueShuffleSeed(selectedExam.id),
+                      shuffleOptions
+                    );
+                    onStartDirect(freshExamForAttempt, {
                       className: currentConfig.className,
                       durationMinutes: currentConfig.durationMinutes,
                       teacherNote: currentConfig.teacherNote,
                       shuffleQuestions: currentConfig.shuffleQuestions,
+                      shuffleOptions: currentConfig.shuffleOptions,
                       teacherUsername: currentConfig.teacherUsername,
                       teacherName: currentConfig.teacherName,
                     });
@@ -513,29 +535,81 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
               </div>
             </div>
 
-            {/* Teacher Note & Shuffle Toggle */}
-            <div className="bg-slate-50 rounded-xl border border-slate-200 p-3.5 space-y-2.5">
+            {/* Teacher Note & Auto-Shuffle Controls */}
+            <div className="bg-slate-50 rounded-xl border border-slate-200 p-3.5 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="text-xs font-bold text-slate-800">
-                  4. Lời dặn của Giáo viên &amp; Tùy chọn câu hỏi:
+                  4. Tự động xáo trộn câu hỏi &amp; Lời dặn Giáo viên:
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setShuffleQuestions((prev) => !prev)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer border transition-colors ${
-                    shuffleQuestions
-                      ? 'bg-amber-100 text-amber-950 border-amber-300'
-                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                  }`}
-                >
-                  <Shuffle className="w-3 h-3" />
-                  <span>
-                    {shuffleQuestions
-                      ? 'Đang bật đảo thứ tự câu hỏi'
-                      : 'Giữ nguyên thứ tự câu 1 → ' + selectedExam.partI.length}
-                  </span>
-                </button>
+                {shuffleQuestions && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewSeedNonce((n) => n + 1)}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-50 transition-colors"
+                    title="Xem thử một phiên bản xáo trộn ngẫu nhiên khác mà học sinh sẽ nhận"
+                  >
+                    <Shuffle className="w-3 h-3" />
+                    <span>Xáo trộn thử bản xem trước</span>
+                  </button>
+                )}
               </div>
+
+              <div
+                className={`rounded-xl border p-3 space-y-2.5 transition-colors ${
+                  shuffleQuestions
+                    ? 'bg-amber-50/90 border-amber-300'
+                    : 'bg-white border-slate-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-900">
+                      <Shuffle
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          shuffleQuestions ? 'text-amber-700' : 'text-slate-500'
+                        }`}
+                      />
+                      <span>Tự động xáo trộn câu hỏi cho từng học sinh</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      {shuffleQuestions
+                        ? 'Mỗi học sinh khi quét mã QR (hoặc làm lại bài) sẽ tự động nhận một thứ tự câu hỏi riêng biệt ở cả Phần I và Phần II để chống nhìn bài.'
+                        : 'Đang giữ nguyên thứ tự gốc từ Câu 1 đến Câu ' +
+                          selectedExam.partI.length +
+                          ' cho tất cả học sinh.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShuffleQuestions((prev) => !prev)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold shrink-0 cursor-pointer border transition-colors ${
+                      shuffleQuestions
+                        ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 border-amber-600 shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {shuffleQuestions ? 'Đang bật' : 'Đang tắt'}
+                  </button>
+                </div>
+
+                {shuffleQuestions && (
+                  <label className="flex items-center gap-2 pt-2 border-t border-amber-200/80 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={shuffleOptions}
+                      onChange={(e) => setShuffleOptions(e.target.checked)}
+                      className="w-4 h-4 rounded accent-emerald-700 cursor-pointer"
+                    />
+                    <span className="text-[11px] font-semibold text-amber-950">
+                      Xáo trộn cả thứ tự đáp án A, B, C, D &amp; các ý a, b, c, d{' '}
+                      <span className="font-normal text-amber-800">
+                        (tự động giữ nguyên các câu có &quot;Cả A và B / Tất cả đều đúng&quot;)
+                      </span>
+                    </span>
+                  </label>
+                )}
+              </div>
+
               <input
                 type="text"
                 value={teacherNote}

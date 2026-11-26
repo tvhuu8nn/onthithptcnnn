@@ -42,6 +42,7 @@ export interface ExamAssignmentConfig {
   className?: string;
   durationMinutes: number;
   shuffleQuestions: boolean;
+  shuffleOptions?: boolean;
   showSolutionsAfterSubmit: boolean;
   teacherNote?: string;
   teacherUsername?: string;
@@ -87,7 +88,8 @@ export function saveStudentQrAssignment(
       examCode: exam.code,
       className: config?.className || 'Ôn THPT',
       durationMinutes: config?.durationMinutes || exam.durationMinutes || 50,
-      shuffleQuestions: Boolean(config?.shuffleQuestions),
+      shuffleQuestions: config?.shuffleQuestions !== false,
+      shuffleOptions: config?.shuffleOptions !== false,
       showSolutionsAfterSubmit: config?.showSolutionsAfterSubmit !== false,
       teacherNote: config?.teacherNote,
       teacherUsername: config?.teacherUsername,
@@ -152,7 +154,8 @@ export function getSavedAssignmentConfig(exam: Exam): ExamAssignmentConfig {
     examCode: exam.code,
     className: 'Ôn THPT',
     durationMinutes: exam.durationMinutes || 50,
-    shuffleQuestions: false,
+    shuffleQuestions: true,
+    shuffleOptions: true,
     showSolutionsAfterSubmit: true,
     teacherNote: 'Yêu cầu các em làm bài nghiêm túc, không sử dụng tài liệu.',
   };
@@ -371,18 +374,30 @@ function hashStringSeed(str: string): number {
   return h >>> 0 || 123456789;
 }
 
+export function createUniqueShuffleSeed(examIdOrCode: string): string {
+  return `${examIdOrCode}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const POSITIONAL_OPTION_PATTERN =
+  /(?:cả\s+(?:hai|ba|bốn|2|3|4|[a-d])\b|tất\s+cả\s+(?:các\s+)?(?:đáp\s+án|phương\s+án|ý|câu|trên|đều)|(?:đáp\s+án|phương\s+án|ý)\s+(?:a|b|c|d|trên)\b|(?:a|b|c)\s*(?:,|và|&)\s*(?:b|c|d)\s*(?:đều|đúng|sai)|cả\s+[a-d]\s*(?:,|và)\s*[a-d]|trên\s+đây\s+đều)/i;
+
+const POSITIONAL_TF_STMT_PATTERN =
+  /(?:ý\s+[a-d]\)|nhận\s+định\s+[a-d]\b|phát\s+biểu\s+[a-d]\b|cả\s+[a-d]\s*(?:,|và)\s*[a-d]|tất\s+cả\s+(?:các\s+)?ý\s+trên)/i;
+
 /**
  * Chuẩn bị đề thi cho học sinh:
- * - Mặc định giữ nguyên 100% thứ tự câu hỏi chuẩn của đề (Câu 1 -> Câu N) để đồng bộ tuyệt đối với đề Giáo viên giao.
- * - Nếu Giáo viên chủ động bật shuffleQuestions, sử dụng thuật toán xáo trộn cố định theo mã đề (deterministic shuffle)
- *   để câu hỏi không bao giờ bị nhảy lại giữa chừng khi đang làm bài.
+ * - Khi bật shuffleQuestions: tự động xáo trộn thứ tự câu hỏi Phần I, Phần II (và Phần III nếu có)
+ *   theo hạt giống riêng cho từng học sinh/lượt làm bài để mỗi em nhận một mã đề xáo trộn riêng biệt.
+ * - Khi bật shuffleOptions (mặc định bật cùng shuffleQuestions): xáo trộn thêm các phương án A/B/C/D
+ *   và các ý a/b/c/d (tự động giữ nguyên các câu có chứa cụm từ tham chiếu vị trí như "Cả A và B" / "Tất cả đều đúng").
  */
 export function prepareExamForStudent(
   exam: Exam,
   shuffleQuestions?: boolean,
-  seedKey?: string
+  seedKey?: string,
+  shuffleOptions: boolean = true
 ): Exam {
-  if (!shuffleQuestions || !exam.partI || exam.partI.length <= 1) {
+  if (!shuffleQuestions) {
     return exam;
   }
   let a = hashStringSeed(seedKey || `${exam.id}_${exam.code}`);
@@ -394,20 +409,99 @@ export function prepareExamForStudent(
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 
-  const clonedPartI = [...exam.partI];
-  for (let i = clonedPartI.length - 1; i > 0; i--) {
-    const j = Math.floor(nextRand() * (i + 1));
-    const temp = clonedPartI[i];
-    clonedPartI[i] = clonedPartI[j];
-    clonedPartI[j] = temp;
-  }
-  const renumberedPartI = clonedPartI.map((q, idx) => ({
-    ...q,
-    number: idx + 1,
-  }));
+  const shuffleArray = <T,>(arr: T[]): T[] => {
+    const cloned = [...arr];
+    for (let i = cloned.length - 1; i > 0; i--) {
+      const j = Math.floor(nextRand() * (i + 1));
+      const temp = cloned[i];
+      cloned[i] = cloned[j];
+      cloned[j] = temp;
+    }
+    return cloned;
+  };
+
+  // 1. Shuffle Part I questions + safely shuffle A/B/C/D options
+  const partISource = Array.isArray(exam.partI) ? exam.partI : [];
+  const shuffledPartI = partISource.length > 1 ? shuffleArray(partISource) : [...partISource];
+  const optionLetters: Array<'A' | 'B' | 'C' | 'D'> = ['A', 'B', 'C', 'D'];
+
+  const renumberedPartI = shuffledPartI.map((q, idx) => {
+    let nextOptions = q.options;
+    let nextCorrectAnswer = q.correctAnswer;
+
+    if (shuffleOptions && q.options) {
+      const entries = optionLetters.map((letter) => ({
+        letter,
+        text: String(q.options[letter] ?? ''),
+      }));
+      const hasPositionalRef = entries.some((e) => POSITIONAL_OPTION_PATTERN.test(e.text));
+      if (!hasPositionalRef && entries.every((e) => e.text.length > 0)) {
+        const shuffledEntries = shuffleArray(entries);
+        const remappedOptions = { ...q.options };
+        let mappedCorrect = q.correctAnswer;
+        shuffledEntries.forEach((entry, oIdx) => {
+          const newLetter = optionLetters[oIdx];
+          remappedOptions[newLetter] = entry.text;
+          if (entry.letter === q.correctAnswer) {
+            mappedCorrect = newLetter;
+          }
+        });
+        nextOptions = remappedOptions;
+        nextCorrectAnswer = mappedCorrect;
+      }
+    }
+
+    return {
+      ...q,
+      number: idx + 1,
+      options: nextOptions,
+      correctAnswer: nextCorrectAnswer,
+    };
+  });
+
+  // 2. Shuffle Part II questions + safely shuffle a/b/c/d statements
+  const partIISource = Array.isArray(exam.partII) ? exam.partII : [];
+  const shuffledPartII = partIISource.length > 1 ? shuffleArray(partIISource) : [...partIISource];
+  const subLetters: Array<'a' | 'b' | 'c' | 'd'> = ['a', 'b', 'c', 'd'];
+
+  const renumberedPartII = shuffledPartII.map((tf, idx) => {
+    let nextStatements = tf.statements;
+    if (shuffleOptions && Array.isArray(tf.statements) && tf.statements.length === 4) {
+      const hasPositionalStmt = tf.statements.some((st) =>
+        POSITIONAL_TF_STMT_PATTERN.test(String(st.text || ''))
+      );
+      if (!hasPositionalStmt) {
+        const shuffledStmts = shuffleArray([...tf.statements]);
+        nextStatements = [
+          { ...shuffledStmts[0], subId: subLetters[0] },
+          { ...shuffledStmts[1], subId: subLetters[1] },
+          { ...shuffledStmts[2], subId: subLetters[2] },
+          { ...shuffledStmts[3], subId: subLetters[3] },
+        ] as typeof tf.statements;
+      }
+    }
+    return {
+      ...tf,
+      number: idx + 1,
+      statements: nextStatements,
+    };
+  });
+
+  // 3. Shuffle Part III questions if present
+  const partIIISource = Array.isArray(exam.partIII) ? exam.partIII : undefined;
+  const renumberedPartIII =
+    partIIISource && partIIISource.length > 1
+      ? shuffleArray(partIIISource).map((sa, idx) => ({
+          ...sa,
+          number: idx + 1,
+        }))
+      : partIIISource;
+
   return {
     ...exam,
     partI: renumberedPartI,
+    partII: renumberedPartII,
+    ...(renumberedPartIII !== undefined ? { partIII: renumberedPartIII } : {}),
   };
 }
 
@@ -491,6 +585,11 @@ export function generateStudentExamUrl(
   }
   if (config.shuffleQuestions) {
     params.set('shuffle', '1');
+    if (config.shuffleOptions === false) {
+      params.set('shuffleOpt', '0');
+    }
+  } else {
+    params.set('shuffle', '0');
   }
   if (!config.showSolutionsAfterSubmit) {
     params.set('solutions', '0');
@@ -526,6 +625,9 @@ export function buildAssignmentMessage(
     `🔑 Mã đề / Mã phòng thi: ${exam.code}`,
     `👥 Lớp: ${config.className || 'Toàn khối'}`,
     `⏱ Thời gian làm bài: ${config.durationMinutes} phút`,
+    config.shuffleQuestions
+      ? `🔀 Chế độ đề: Tự động xáo trộn câu hỏi${config.shuffleOptions !== false ? ' & đáp án' : ''} riêng cho từng học sinh`
+      : '',
     config.teacherNote ? `💬 Lời dặn của Giáo viên: ${config.teacherNote}` : '',
     `👉 Nhấn vào link để vào làm bài ngay: ${studentExamUrl}`,
     `(Hoặc mở ứng dụng và nhập Mã đề: ${exam.code} tại ô Phòng Thi Trực Tuyến)`,
@@ -629,7 +731,9 @@ export function renderBrandedQrCardCanvas(
         ctx.fillStyle = '#1e293b';
         ctx.font = 'bold 15px sans-serif';
         ctx.fillText(
-          'Học sinh chỉ cần quét mã QR 1 lần để làm bài & thi lại không giới hạn bất cứ thời gian nào',
+          config.shuffleQuestions
+            ? 'Tự động xáo trộn câu hỏi riêng cho từng học sinh khi quét mã QR'
+            : 'Học sinh chỉ cần quét mã QR 1 lần để làm bài & thi lại không giới hạn bất cứ thời gian nào',
           width / 2,
           682
         );
@@ -705,6 +809,7 @@ export function parseStudentUrlParams(): {
   durationMinutes?: number;
   className?: string;
   shuffleQuestions?: boolean;
+  shuffleOptions?: boolean;
   showSolutionsAfterSubmit?: boolean;
   teacherNote?: string;
   teacherUsername?: string;
@@ -758,6 +863,9 @@ export function parseStudentUrlParams(): {
   const parsedDuration = durationStr ? parseInt(durationStr, 10) : NaN;
   const defaultDuration = matched ? matched.durationMinutes : 50;
 
+  const shuffleRaw = getParam('shuffle');
+  const shuffleOptRaw = getParam('shuffleOpt');
+
   return {
     isStudentMode: true,
     examId: getParam('examId') || matched?.id || pathExamKey || examParam || undefined,
@@ -765,7 +873,8 @@ export function parseStudentUrlParams(): {
     code: getParam('code') || getParam('s') || matched?.code || pathExamKey || examParam || undefined,
     durationMinutes: !isNaN(parsedDuration) && parsedDuration > 0 ? parsedDuration : defaultDuration,
     className: getParam('class') || undefined,
-    shuffleQuestions: getParam('shuffle') === '1',
+    shuffleQuestions: shuffleRaw === null ? undefined : shuffleRaw !== '0',
+    shuffleOptions: shuffleOptRaw === null ? undefined : shuffleOptRaw !== '0',
     showSolutionsAfterSubmit: getParam('solutions') !== '0',
     teacherNote: safeDecodeNote(getParam('note')),
     teacherUsername: (getParam('teacher') || getParam('t') || '').trim() || undefined,

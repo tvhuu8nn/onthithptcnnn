@@ -7,6 +7,7 @@ import { ALL_GRADE_12_CHAPTER_EXAMS } from './data/grade12ChapterExams';
 import { generateRandomExam } from './data/questionBank';
 import { evaluateExam } from './utils/scoring';
 import {
+  createUniqueShuffleSeed,
   parseStudentUrlParams,
   findBuiltinExam,
   prepareExamForStudent,
@@ -589,6 +590,11 @@ export default function App() {
   const [savedQrAssignments, setSavedQrAssignments] = useState<SavedStudentQrAssignment[]>(() =>
     getSavedStudentQrAssignments()
   );
+  const [activeExamShuffleMeta, setActiveExamShuffleMeta] = useState<{
+    rawExam: Exam;
+    shuffleQuestions: boolean;
+    shuffleOptions: boolean;
+  } | null>(null);
 
   // Check URL query/hash/path parameters OR active server assignment for student arriving via QR code on Smartphone / PC
   useEffect(() => {
@@ -606,22 +612,31 @@ export default function App() {
         findBuiltinExam(studentParams.code) ||
         findBuiltinExam(studentParams.customCode);
 
+      const visitShuffleSeed = createUniqueShuffleSeed(
+        studentParams.examId || studentParams.code || studentParams.customCode || 'qr'
+      );
+
       if (matchedExam) {
+        const initialShouldShuffle = studentParams.shuffleQuestions !== false;
+        const initialShuffleOptions = studentParams.shuffleOptions !== false;
         const initialExam = prepareExamForStudent(
           matchedExam,
-          studentParams.shuffleQuestions
+          initialShouldShuffle,
+          visitShuffleSeed,
+          initialShuffleOptions
         );
         const initialDuration =
           studentParams.durationMinutes || initialExam.durationMinutes || 50;
 
-        // Lưu vĩnh viễn đề đã giao qua mã QR để học sinh chỉ cần nhận 1 lần là làm bài không giới hạn bất cứ thời gian nào
+        // Lưu vĩnh viễn đề gốc đã giao qua mã QR (để các lượt thi lại sau này tự xáo trộn mới hoàn toàn)
         setSavedQrAssignments(
-          saveStudentQrAssignment(initialExam, {
-            examId: initialExam.id,
-            examCode: initialExam.code,
+          saveStudentQrAssignment(matchedExam, {
+            examId: matchedExam.id,
+            examCode: matchedExam.code,
             className: studentParams.className,
             durationMinutes: initialDuration,
-            shuffleQuestions: Boolean(studentParams.shuffleQuestions),
+            shuffleQuestions: initialShouldShuffle,
+            shuffleOptions: initialShuffleOptions,
             showSolutionsAfterSubmit: studentParams.showSolutionsAfterSubmit !== false,
             teacherNote: studentParams.teacherNote,
             teacherUsername: studentParams.teacherUsername,
@@ -629,6 +644,11 @@ export default function App() {
           })
         );
 
+        setActiveExamShuffleMeta({
+          rawExam: matchedExam,
+          shuffleQuestions: initialShouldShuffle,
+          shuffleOptions: initialShuffleOptions,
+        });
         // Mở thẳng đúng đề đã giao vào ExamRunner (đồng bộ 100% nội dung đề với mã QR)
         setActiveExam(initialExam);
         setCustomExamDuration(initialDuration);
@@ -691,10 +711,16 @@ export default function App() {
               const shouldShuffle =
                 studentParams.shuffleQuestions !== undefined
                   ? studentParams.shuffleQuestions
-                  : Boolean(serverCfg.shuffleQuestions);
+                  : serverCfg.shuffleQuestions !== false;
+              const shouldShuffleOptions =
+                studentParams.shuffleOptions !== undefined
+                  ? studentParams.shuffleOptions
+                  : serverCfg.shuffleOptions !== false;
               const serverExam: Exam = prepareExamForStudent(
                 rawServerExam,
-                shouldShuffle
+                shouldShuffle,
+                visitShuffleSeed,
+                shouldShuffleOptions
               );
               const finalDuration =
                 studentParams.durationMinutes ||
@@ -713,14 +739,15 @@ export default function App() {
                 studentProfile.studentClass ||
                 '12A1';
 
-              // Lưu vĩnh viễn đề từ server vào thiết bị học sinh để làm bài không giới hạn bất cứ thời gian nào
+              // Lưu vĩnh viễn đề gốc từ server vào thiết bị học sinh để làm bài không giới hạn bất cứ thời gian nào
               setSavedQrAssignments(
-                saveStudentQrAssignment(serverExam, {
-                  examId: serverExam.id,
-                  examCode: serverExam.code,
+                saveStudentQrAssignment(rawServerExam, {
+                  examId: rawServerExam.id,
+                  examCode: rawServerExam.code,
                   className: finalClass,
                   durationMinutes: finalDuration,
                   shuffleQuestions: shouldShuffle,
+                  shuffleOptions: shouldShuffleOptions,
                   showSolutionsAfterSubmit: true,
                   teacherNote: finalNote,
                   teacherUsername: finalTeacherUser,
@@ -728,6 +755,11 @@ export default function App() {
                 })
               );
 
+              setActiveExamShuffleMeta({
+                rawExam: rawServerExam,
+                shuffleQuestions: shouldShuffle,
+                shuffleOptions: shouldShuffleOptions,
+              });
               setActiveExam(serverExam);
               setCustomExamDuration(finalDuration);
               setActiveTeacherNote(finalNote);
@@ -745,10 +777,19 @@ export default function App() {
             }
           } else if (!matchedExam) {
             // Dự phòng cuối cùng nếu cả cục bộ và server đều không tìm thấy mã đề
+            const fallbackShouldShuffle = studentParams.shuffleQuestions !== false;
+            const fallbackShuffleOptions = studentParams.shuffleOptions !== false;
             const fallbackExam = prepareExamForStudent(
               MOCK_EXAMS[0],
-              studentParams.shuffleQuestions
+              fallbackShouldShuffle,
+              visitShuffleSeed,
+              fallbackShuffleOptions
             );
+            setActiveExamShuffleMeta({
+              rawExam: MOCK_EXAMS[0],
+              shuffleQuestions: fallbackShouldShuffle,
+              shuffleOptions: fallbackShuffleOptions,
+            });
             setActiveExam(fallbackExam);
             setCustomExamDuration(studentParams.durationMinutes || 50);
             setActiveTeacherNote(studentParams.teacherNote);
@@ -756,10 +797,19 @@ export default function App() {
         })
         .catch(() => {
           if (!matchedExam) {
+            const fallbackShouldShuffle = studentParams.shuffleQuestions !== false;
+            const fallbackShuffleOptions = studentParams.shuffleOptions !== false;
             const fallbackExam = prepareExamForStudent(
               MOCK_EXAMS[0],
-              studentParams.shuffleQuestions
+              fallbackShouldShuffle,
+              visitShuffleSeed,
+              fallbackShuffleOptions
             );
+            setActiveExamShuffleMeta({
+              rawExam: MOCK_EXAMS[0],
+              shuffleQuestions: fallbackShouldShuffle,
+              shuffleOptions: fallbackShuffleOptions,
+            });
             setActiveExam(fallbackExam);
             setCustomExamDuration(studentParams.durationMinutes || 50);
             setActiveTeacherNote(studentParams.teacherNote);
@@ -908,8 +958,17 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Retake current exam
+  // Retake current exam (re-shuffle with a fresh unique seed if assigned with auto-shuffle enabled)
   const handleRetakeExam = () => {
+    if (activeExamShuffleMeta?.shuffleQuestions) {
+      const reshuffled = prepareExamForStudent(
+        activeExamShuffleMeta.rawExam,
+        true,
+        createUniqueShuffleSeed(activeExamShuffleMeta.rawExam.id),
+        activeExamShuffleMeta.shuffleOptions
+      );
+      setActiveExam(reshuffled);
+    }
     setUserAnswers(null);
     setExamResult(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -918,6 +977,7 @@ export default function App() {
   // Exit back to home
   const handleExitExam = () => {
     setActiveExam(null);
+    setActiveExamShuffleMeta(null);
     setUserAnswers(null);
     setExamResult(null);
     setCurrentStudentInfo(undefined);
@@ -1135,6 +1195,7 @@ export default function App() {
           }}
           teacherNote={activeTeacherNote}
           assignedTeacherUsername={activeAssignedTeacher?.username}
+          isShuffledForStudent={Boolean(activeExamShuffleMeta?.shuffleQuestions)}
           customDurationMinutes={customExamDuration}
           isPausedForEntry={Boolean(studentEntryConfig)}
           onAssignQr={
@@ -1155,18 +1216,25 @@ export default function App() {
             ]}
             currentUser={currentUser}
             onStartDirect={(exam, cfg) => {
+              const sourceRaw = assignQrExam || exam;
               setSavedQrAssignments(
-                saveStudentQrAssignment(exam, {
-                  examId: exam.id,
-                  examCode: exam.code,
+                saveStudentQrAssignment(sourceRaw, {
+                  examId: sourceRaw.id,
+                  examCode: sourceRaw.code,
                   className: cfg.className,
                   durationMinutes: cfg.durationMinutes,
                   shuffleQuestions: cfg.shuffleQuestions,
+                  shuffleOptions: cfg.shuffleOptions,
                   teacherNote: cfg.teacherNote,
                   teacherUsername: cfg.teacherUsername || currentUser?.username,
                   teacherName: cfg.teacherName || currentUser?.fullName,
                 })
               );
+              setActiveExamShuffleMeta({
+                rawExam: sourceRaw,
+                shuffleQuestions: Boolean(cfg.shuffleQuestions),
+                shuffleOptions: cfg.shuffleOptions !== false,
+              });
               setActiveExam(exam);
               setCustomExamDuration(cfg.durationMinutes);
               setActiveTeacherNote(cfg.teacherNote);
@@ -1841,7 +1909,20 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
-                              setActiveExam(item.exam);
+                              const shouldShuffle = item.config.shuffleQuestions !== false;
+                              const shouldShuffleOpt = item.config.shuffleOptions !== false;
+                              const prepared = prepareExamForStudent(
+                                item.exam,
+                                shouldShuffle,
+                                createUniqueShuffleSeed(item.exam.id),
+                                shouldShuffleOpt
+                              );
+                              setActiveExamShuffleMeta({
+                                rawExam: item.exam,
+                                shuffleQuestions: shouldShuffle,
+                                shuffleOptions: shouldShuffleOpt,
+                              });
+                              setActiveExam(prepared);
                               setCustomExamDuration(item.config.durationMinutes || item.exam.durationMinutes || 50);
                               setActiveTeacherNote(item.config.teacherNote);
                               setActiveAssignedTeacher({
@@ -2200,18 +2281,25 @@ export default function App() {
           ]}
           currentUser={currentUser}
           onStartDirect={(exam, cfg) => {
+            const sourceRaw = assignQrExam || exam;
             setSavedQrAssignments(
-              saveStudentQrAssignment(exam, {
-                examId: exam.id,
-                examCode: exam.code,
+              saveStudentQrAssignment(sourceRaw, {
+                examId: sourceRaw.id,
+                examCode: sourceRaw.code,
                 className: cfg.className,
                 durationMinutes: cfg.durationMinutes,
                 shuffleQuestions: cfg.shuffleQuestions,
+                shuffleOptions: cfg.shuffleOptions,
                 teacherNote: cfg.teacherNote,
                 teacherUsername: cfg.teacherUsername || currentUser?.username,
                 teacherName: cfg.teacherName || currentUser?.fullName,
               })
             );
+            setActiveExamShuffleMeta({
+              rawExam: sourceRaw,
+              shuffleQuestions: Boolean(cfg.shuffleQuestions),
+              shuffleOptions: cfg.shuffleOptions !== false,
+            });
             setActiveExam(exam);
             setCustomExamDuration(cfg.durationMinutes);
             setActiveTeacherNote(cfg.teacherNote);
