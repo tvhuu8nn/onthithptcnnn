@@ -251,12 +251,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="w-9 h-9 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-lg shadow-sm">
               NN
             </div>
-            <div>
-              <span className="text-sm sm:text-base md:text-lg font-bold text-slate-900 tracking-tight block whitespace-nowrap leading-tight">
-                Công Nghệ Nông Nghiệp THPT
+            <div className="min-w-0">
+              <span className="text-xs sm:text-sm md:text-base font-extrabold text-emerald-950 tracking-tight block whitespace-nowrap leading-tight">
+                HỌC LIỆU CÔNG NGHỆ NÔNG NGHIỆP THPT
               </span>
-              <span className="text-[11px] text-slate-500 block leading-none font-medium">
-                GDPT 2018 · 24 Mã Đề Chuẩn Hóa (101 - 124)
+              <span className="text-[10px] sm:text-[11px] text-slate-600 block leading-tight font-medium truncate max-w-[230px] sm:max-w-none">
+                Hệ Thống Ôn Tập &amp; Luyện Đề Chuẩn Chương Trình GDPT 2018
               </span>
             </div>
           </button>

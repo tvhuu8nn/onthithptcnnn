@@ -1365,31 +1365,48 @@ export default function App() {
       <main className="flex-1">
         {currentTab === 'exams' && (
           <div className="space-y-10 pb-16">
-            {/* Hero Section */}
-            <section className="bg-gradient-to-b from-emerald-900 to-emerald-950 text-white py-10 sm:py-12 px-4 sm:px-6 lg:px-8 border-b border-emerald-800">
+            {/* Hero & Website Cover Section */}
+            <section className="bg-gradient-to-b from-[#145f33] via-emerald-900 to-emerald-950 text-white py-5 sm:py-7 lg:py-8 px-3 sm:px-6 lg:px-8 border-b border-emerald-800">
               <div className="max-w-7xl mx-auto">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                  <div className="lg:col-span-8 space-y-4 pt-1">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300">
-                      <span>KỲ THI TỐT NGHIỆP THPT</span>
-                      <span aria-hidden="true">·</span>
-                      <span>CHƯƠNG TRÌNH GDPT 2018</span>
-                      <span aria-hidden="true">·</span>
-                      <span>KẾT NỐI TRI THỨC</span>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 items-stretch">
+                  {/* Block A: Trang bìa chính + Tiêu đề tóm tắt (PC: 8/12 bên trái · Mobile: toàn chiều rộng trên cùng) */}
+                  <div className="lg:col-span-8 lg:row-start-1 flex flex-col justify-between gap-4">
+                    <div className="relative w-full overflow-hidden rounded-xl sm:rounded-2xl bg-[#166d38] ring-1 ring-emerald-300/30 shadow-xl">
+                      <img
+                        src="/assets/aistudio/Gemini_Generated_Image_5w8nka5w8nka5w8n_bd78dffd.png"
+                        alt="Học liệu Công nghệ Nông nghiệp THPT - Hệ thống ôn tập và luyện đề chuẩn chương trình GDPT 2018"
+                        width={2816}
+                        height={1472}
+                        loading="eager"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        className="block w-full h-auto aspect-[2816/1472] object-contain"
+                      />
                     </div>
 
-                    <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
-                      Học liệu môn Công nghệ nông nghiệp
-                    </h1>
+                    <div className="space-y-1.5 px-0.5">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] sm:text-xs font-semibold text-emerald-300">
+                        <span>Chương trình GDPT 2018</span>
+                        <span aria-hidden="true">·</span>
+                        <span>SGK Kết nối tri thức</span>
+                        <span aria-hidden="true">·</span>
+                        <span>Lớp 10 · 11 · 12 &amp; Tốt nghiệp THPT</span>
+                      </div>
+                      <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-white leading-tight [text-wrap:balance]">
+                        HỌC LIỆU CÔNG NGHỆ NÔNG NGHIỆP THPT
+                      </h1>
+                      <p className="text-xs sm:text-sm md:text-base font-medium text-emerald-100 leading-relaxed">
+                        Hệ Thống Ôn Tập &amp; Luyện Đề Chuẩn Chương Trình GDPT 2018
+                      </p>
+                    </div>
+                  </div>
 
-                    <p className="text-sm sm:text-base text-emerald-100 max-w-2xl leading-relaxed">
-                      Nền tảng luyện đề chuẩn ma trận định dạng mới: <strong>24 câu trắc nghiệm nhiều phương án lựa chọn</strong> (0,25đ/câu) kết hợp <strong>4 câu đúng/sai theo tình huống thực tiễn</strong> (1,0đ/câu) theo cấu trúc chuẩn của Bộ GD&ĐT.
-                    </p>
-
-                    <div className="pt-2 flex flex-wrap items-center gap-3">
+                  {/* Block B: Thanh công cụ thao tác nhanh (Mobile: hiển thị ngay dưới trang bìa · PC: trải ngang cân đối toàn hàng 2) */}
+                  <div className="lg:col-span-12 lg:row-start-2 pt-4 border-t border-emerald-700/60">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
                       <button
                         onClick={() => handleAssignQrAttempt(currentSelectedExam)}
-                        className={`px-5 py-2.5 text-xs sm:text-sm font-bold active:scale-95 transition-all rounded-lg shadow-sm flex items-center gap-2 cursor-pointer ${
+                        className={`px-4 py-2.5 text-xs sm:text-sm font-bold active:scale-95 transition-all rounded-lg shadow-sm flex items-center gap-2 cursor-pointer ${
                           isLoyalMember || isStudentMemberTier
                             ? 'text-amber-950 bg-amber-200 hover:bg-amber-300 border border-amber-400'
                             : 'text-white bg-emerald-600 hover:bg-emerald-500'
@@ -1402,13 +1419,13 @@ export default function App() {
                             : 'Tạo mã QR đồng bộ nội dung đề thi trực tuyến cho học sinh quét làm bài'
                         }
                       >
-                        {isLoyalMember || isStudentMemberTier ? <Lock className="w-4 h-4 text-amber-800" /> : <QrCode className="w-4 h-4" />}
+                        {isLoyalMember || isStudentMemberTier ? <Lock className="w-4 h-4 text-amber-800 shrink-0" /> : <QrCode className="w-4 h-4 shrink-0" />}
                         <span>Giao Đề Qua Mã QR Cho Học Sinh</span>
                       </button>
 
                       <button
                         onClick={handleGenerateRandomExam}
-                        className={`px-4 py-2.5 text-xs sm:text-sm font-bold active:scale-95 transition-all rounded-lg shadow-sm flex items-center gap-2 cursor-pointer ${
+                        className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold active:scale-95 transition-all rounded-lg shadow-sm flex items-center gap-2 cursor-pointer ${
                           isLoyalMember
                             ? 'text-amber-950 bg-amber-100 hover:bg-amber-200 border border-amber-300'
                             : 'text-emerald-950 bg-white hover:bg-emerald-50'
@@ -1420,100 +1437,98 @@ export default function App() {
                         }
                       >
                         {isLoyalMember ? (
-                          <Lock className="w-4 h-4 text-amber-700" />
+                          <Lock className="w-4 h-4 text-amber-700 shrink-0" />
                         ) : (
-                          <PlusCircle className="w-4 h-4 text-emerald-800" />
+                          <PlusCircle className="w-4 h-4 text-emerald-800 shrink-0" />
                         )}
-                        <span>
-                          Tạo 1 Đề Thi Ngẫu Nhiên Mới
-                        </span>
+                        <span>Tạo 1 Đề Thi Ngẫu Nhiên Mới</span>
                       </button>
 
                       <button
                         onClick={() => setReferenceUploadTrigger((c) => c + 1)}
-                        className="px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-teal-300 hover:bg-teal-200 active:scale-95 transition-all rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-teal-300 hover:bg-teal-200 active:scale-95 transition-all rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer"
                         title="Giáo viên đăng tài liệu / đề tham khảo (.docx, .pdf, .txt) lên thẻ Đề Tham Khảo"
                       >
-                        <UploadCloud className="w-4 h-4 text-slate-900" />
+                        <UploadCloud className="w-4 h-4 text-slate-900 shrink-0" />
                         <span>Đăng Tài Liệu Đề Tham Khảo</span>
                       </button>
 
                       {currentUser?.role === 'admin' && (
                         <button
                           onClick={() => setCurrentTab('users')}
-                          className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-emerald-950 bg-emerald-300 hover:bg-emerald-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          className="px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-emerald-950 bg-emerald-300 hover:bg-emerald-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
                           title="Quản lý danh sách tài khoản học sinh, giáo viên và quản trị viên"
                         >
-                          <Users className="w-4 h-4 text-emerald-900" />
+                          <Users className="w-4 h-4 text-emerald-900 shrink-0" />
                           <span>Quản Lý Người Dùng</span>
                         </button>
                       )}
 
                       <button
                         onClick={() => setCurrentTab('mistakes')}
-                        className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-rose-200 bg-rose-950/70 hover:bg-rose-900 border border-rose-800/80 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-rose-200 bg-rose-950/70 hover:bg-rose-900 border border-rose-800/80 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Flame className="w-4 h-4 text-rose-400" />
+                        <Flame className="w-4 h-4 text-rose-400 shrink-0" />
                         <span>Câu Học Sinh Hay Sai (Bẫy Đề)</span>
                       </button>
 
                       <button
                         onClick={() => handleOpenPrint(currentSelectedExam)}
-                        className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-emerald-100 bg-emerald-800/80 hover:bg-emerald-800 border border-emerald-700/80 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-emerald-100 bg-emerald-800/80 hover:bg-emerald-800 border border-emerald-700/80 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
                         title="Tải đề thi về máy tính dưới dạng file Word (.docx) hoặc In/Lưu PDF"
                       >
-                        <Download className="w-4 h-4 text-emerald-300" />
+                        <Download className="w-4 h-4 text-emerald-300 shrink-0" />
                         <span>Tải Đề Về Máy (.docx / PDF)</span>
                       </button>
 
                       <button
                         onClick={() => setCurrentTab('provincial_exams')}
-                        className="px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-indigo-400 hover:bg-indigo-300 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-indigo-400 hover:bg-indigo-300 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Building2 className="w-4 h-4 text-slate-900" />
+                        <Building2 className="w-4 h-4 text-slate-900 shrink-0" />
                         <span>Đề Thi Thử Các Tỉnh (Tải Đề Lên)</span>
                       </button>
 
                       <button
                         onClick={() => setCurrentTab('official_exams')}
-                        className="px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Award className="w-4 h-4 text-slate-900" />
+                        <Award className="w-4 h-4 text-slate-900 shrink-0" />
                         <span>Đề Chính Thức Các Năm (Tải Đề Lên)</span>
                       </button>
 
                       <button
                         onClick={() => setCurrentTab('chapter_review')}
-                        className="px-4 py-2.5 text-xs sm:text-sm font-bold text-amber-950 bg-amber-300 hover:bg-amber-200 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-amber-950 bg-amber-300 hover:bg-amber-200 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
-                        <BookOpen className="w-4 h-4 text-amber-900" />
+                        <BookOpen className="w-4 h-4 text-amber-900 shrink-0" />
                         <span>Tài Nguyên (SGK 10·11·12)</span>
                       </button>
 
                       <button
                         onClick={() => setCurrentTab('admin')}
-                        className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-emerald-100 bg-emerald-800/80 hover:bg-emerald-800 border border-emerald-700/80 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-emerald-100 bg-emerald-800/80 hover:bg-emerald-800 border border-emerald-700/80 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-300 shrink-0" />
                         <span>Bảng Điểm</span>
                       </button>
 
                       <button
                         onClick={() => setIsMatrixModalOpen(true)}
-                        className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-white bg-emerald-800/80 hover:bg-emerald-800 border border-emerald-700/80 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-emerald-800/80 hover:bg-emerald-800 border border-emerald-700/80 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Layers className="w-4 h-4" />
-                        <span>Xem Ma Trận & Thang Điểm</span>
+                        <Layers className="w-4 h-4 shrink-0" />
+                        <span>Xem Ma Trận &amp; Thang Điểm</span>
                       </button>
                     </div>
                   </div>
 
-                  {/* Góc trên bên phải giao diện chính: Hộp QR nhỏ gọn + Cấu trúc đề thi */}
-                  <div className="lg:col-span-4 space-y-3">
+                  {/* Block C: Góc trên bên phải giao diện chính (PC: 4/12 cạnh trang bìa · Mobile: xếp gọn bên dưới) */}
+                  <div className="lg:col-span-4 lg:col-start-9 lg:row-start-1 flex flex-col justify-between gap-3">
                     {/* Hộp QR góc nhỏ như mã QR giao bài */}
                     <div
                       onClick={() => setIsSponsorQrModalOpen(true)}
-                      className="bg-emerald-950/70 hover:bg-emerald-950/90 backdrop-blur-xs p-3 rounded-2xl border border-amber-400/60 shadow-md flex flex-col gap-2.5 cursor-pointer transition-all group"
+                      className="bg-emerald-950/70 hover:bg-emerald-950/90 backdrop-blur-xs p-3.5 rounded-2xl border border-amber-400/60 shadow-md flex flex-col gap-2.5 cursor-pointer transition-all group"
                       title="Bấm để mở mã QR Nhà tài trợ thiên thần"
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -1533,6 +1548,7 @@ export default function App() {
                             <img
                               src="/assets/aistudio/df666ece8b190b475208_a4469d11.jpg"
                               alt='Quét cú QR nhẹ nhàng, bạn chính thức là "NHÀ TÀI TRỢ THIÊN THẦN" giúp dự án sinh tồn & phát triển'
+                              referrerPolicy="no-referrer"
                               className="w-full h-full object-cover object-center scale-125"
                             />
                           </div>
@@ -1560,22 +1576,22 @@ export default function App() {
                     </div>
 
                     {/* Quick KPI / Overview Box */}
-                    <div className="bg-emerald-800/50 backdrop-blur-xs p-4 sm:p-5 rounded-2xl border border-emerald-700/60 space-y-2.5 text-xs">
+                    <div className="bg-emerald-800/50 backdrop-blur-xs p-4 sm:p-5 rounded-2xl border border-emerald-700/60 space-y-2.5 text-xs flex-1 flex flex-col justify-center">
                       <span className="font-bold uppercase tracking-wider text-emerald-200 block">
                         Cấu Trúc Đề Thi Chuẩn
                       </span>
                       <div className="space-y-2 divide-y divide-emerald-700/60">
                         <div className="pt-1 flex justify-between items-center">
                           <span className="text-emerald-100">Thời gian làm bài:</span>
-                          <strong className="text-white font-mono text-sm">50 phút</strong>
+                          <strong className="text-white font-mono tabular-nums text-sm">50 phút</strong>
                         </div>
                         <div className="pt-2 flex justify-between items-center">
                           <span className="text-emerald-100">Phần I (Trắc nghiệm):</span>
-                          <strong className="text-white">24 câu (6,0 điểm)</strong>
+                          <strong className="text-white tabular-nums">24 câu (6,0 điểm)</strong>
                         </div>
                         <div className="pt-2 flex justify-between items-center">
                           <span className="text-emerald-100">Phần II (Đúng / Sai):</span>
-                          <strong className="text-white">4 câu (4,0 điểm)</strong>
+                          <strong className="text-white tabular-nums">4 câu (4,0 điểm)</strong>
                         </div>
                         <div className="pt-2 flex justify-between items-center">
                           <span className="text-emerald-100">Số lượt làm bài:</span>
@@ -2292,7 +2308,7 @@ export default function App() {
       {/* Clean Footer */}
       <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Học liệu môn Công nghệ nông nghiệp · GDPT 2018</span>
+          <span>HỌC LIỆU CÔNG NGHỆ NÔNG NGHIỆP THPT · Hệ Thống Ôn Tập &amp; Luyện Đề Chuẩn Chương Trình GDPT 2018</span>
           <div className="flex flex-wrap items-center justify-center gap-3 text-slate-500">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold text-[11px]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
