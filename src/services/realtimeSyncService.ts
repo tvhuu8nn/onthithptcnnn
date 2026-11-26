@@ -26,6 +26,8 @@ export type SyncDomainEvent =
   | 'submission_deleted'
   | 'submissions_reset'
   | 'assignment_updated'
+  | 'exam_session_ended'
+  | 'exam_session_reopened'
   | 'custom_exams_updated'
   | 'mistakes_updated'
   | 'visitor_stats_updated'
@@ -54,6 +56,8 @@ const ALL_SSE_EVENTS: SyncDomainEvent[] = [
   'submission_deleted',
   'submissions_reset',
   'assignment_updated',
+  'exam_session_ended',
+  'exam_session_reopened',
   'custom_exams_updated',
   'mistakes_updated',
   'visitor_stats_updated',

@@ -56,6 +56,7 @@ export interface StudentSubmission {
   note?: string;
   violationCount?: number;
   isAutoCollected?: boolean;
+  autoSubmittedByTeacher?: boolean;
   teacherUsername?: string;
   teacherName?: string;
   examPaper?: StudentExamPaper;

@@ -157,6 +157,7 @@ export interface UserExamAnswers {
     studentId?: string;
   };
   violationCount?: number; // Số lần rời giao diện làm bài thi
+  autoSubmittedByTeacher?: boolean; // Giáo viên bấm kết thúc bài thi sớm -> tự động thu bài
 }
 
 export interface PartIIScoreBreakdown {
@@ -193,4 +194,5 @@ export interface ExamResultSummary {
     studentId?: string;
   };
   violationCount?: number;
+  autoSubmittedByTeacher?: boolean;
 }

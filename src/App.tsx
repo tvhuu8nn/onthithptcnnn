@@ -579,6 +579,13 @@ export default function App() {
   const [activeAssignedTeacher, setActiveAssignedTeacher] = useState<
     { username?: string; fullName?: string } | undefined
   >(undefined);
+  const [closedQrSessionNotice, setClosedQrSessionNotice] = useState<{
+    examTitle?: string;
+    examCode?: string;
+    teacherName?: string;
+    closedAt?: string;
+    reason?: string;
+  } | null>(null);
   const [savedQrAssignments, setSavedQrAssignments] = useState<SavedStudentQrAssignment[]>(() =>
     getSavedStudentQrAssignments()
   );
@@ -647,6 +654,26 @@ export default function App() {
       fetch(`/api/assignments/${encodeURIComponent(lookupKey)}${teacherParam}`, { cache: 'no-store' })
         .then((res) => (res.ok ? res.json() : null))
         .then((payload) => {
+          if (payload?.sessionClosed || payload?.data?.isClosed) {
+            const cInfo = payload.closedInfo || payload.data || {};
+            setActiveExam(null);
+            setStudentEntryConfig(null);
+            setClosedQrSessionNotice({
+              examTitle: payload?.data?.exam?.title || matchedExam?.title,
+              examCode: cInfo.examCode || payload?.data?.exam?.code || studentParams.code,
+              teacherName:
+                cInfo.closedByName ||
+                payload?.data?.config?.teacherName ||
+                studentParams.teacherName ||
+                cInfo.closedBy ||
+                studentParams.teacherUsername,
+              closedAt: cInfo.closedAt || undefined,
+              reason:
+                cInfo.reason ||
+                'Giáo viên đã kết thúc bài thi sớm, khóa link QR và chốt danh sách Bảng Điểm cuối cùng.',
+            });
+            return;
+          }
           if (payload?.success && payload?.data?.exam) {
             const rawServerExam: Exam = payload.data.exam;
             const serverCfg = payload.data.config || {};
@@ -840,6 +867,8 @@ export default function App() {
       }));
 
       const finalViolations = evaluated.violationCount ?? answers.violationCount ?? 0;
+      const isTeacherEnded = Boolean(answers.autoSubmittedByTeacher);
+      evaluated.autoSubmittedByTeacher = isTeacherEnded;
       sendStudentScoreToAdmin({
         studentName: studentInfo?.name || 'Học sinh',
         studentClass: studentInfo?.studentClass || '12A1',
@@ -854,7 +883,8 @@ export default function App() {
         partIICorrectCount: evaluated.partIICorrectStatementsCount,
         timeSpentSeconds: evaluated.timeSpentSeconds,
         violationCount: finalViolations,
-        isAutoCollected: finalViolations >= 5,
+        isAutoCollected: finalViolations >= 5 || isTeacherEnded,
+        autoSubmittedByTeacher: isTeacherEnded,
         teacherUsername: activeAssignedTeacher?.username || currentUser?.username || '',
         teacherName:
           activeAssignedTeacher?.fullName ||
@@ -1016,6 +1046,67 @@ export default function App() {
       ? examList[examList.length - 1]
       : examList[0]);
 
+  if (closedQrSessionNotice) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-rose-50 to-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl border-2 border-rose-200 shadow-xl p-6 sm:p-8 text-center space-y-4">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
+            <Lock className="w-7 h-7" />
+          </div>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-600 text-white text-[11px] font-bold uppercase tracking-wider">
+            Phiên thi đã kết thúc · Link QR đã khóa
+          </div>
+          <h1 className="text-xl font-extrabold text-rose-900">
+            Link làm bài đã bị khóa bởi Giáo viên
+          </h1>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            {closedQrSessionNotice.reason}
+          </p>
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-3.5 text-left text-xs space-y-1.5">
+            {closedQrSessionNotice.examTitle && (
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Đề thi:</span>
+                <strong className="text-slate-900 text-right">{closedQrSessionNotice.examTitle}</strong>
+              </div>
+            )}
+            {closedQrSessionNotice.examCode && (
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Mã đề:</span>
+                <strong className="text-slate-900 font-mono">{closedQrSessionNotice.examCode}</strong>
+              </div>
+            )}
+            {closedQrSessionNotice.teacherName && (
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Giáo viên phụ trách:</span>
+                <strong className="text-slate-900">{closedQrSessionNotice.teacherName}</strong>
+              </div>
+            )}
+            {closedQrSessionNotice.closedAt && (
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Thời điểm kết thúc:</span>
+                <strong className="text-slate-900 tabular-nums">
+                  {new Date(closedQrSessionNotice.closedAt).toLocaleString('vi-VN')}
+                </strong>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setClosedQrSessionNotice(null);
+              try {
+                window.history.replaceState({}, '', '/');
+              } catch {}
+            }}
+            className="w-full py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm transition-colors cursor-pointer"
+          >
+            Quay về trang chính
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // If user is currently taking an exam
   if (activeExam && !examResult) {
     return (
@@ -1043,6 +1134,7 @@ export default function App() {
             });
           }}
           teacherNote={activeTeacherNote}
+          assignedTeacherUsername={activeAssignedTeacher?.username}
           customDurationMinutes={customExamDuration}
           isPausedForEntry={Boolean(studentEntryConfig)}
           onAssignQr={
@@ -1136,11 +1228,26 @@ export default function App() {
           onLogout={handleLogout}
         />
         <main className="flex-1">
+          {examResult.autoSubmittedByTeacher && (
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+              <div className="bg-rose-600 text-white rounded-xl p-4 shadow-md border border-rose-500 flex items-start gap-3">
+                <Lock className="w-5 h-5 shrink-0 mt-0.5 text-rose-100" />
+                <div className="text-sm leading-relaxed">
+                  <strong className="block font-extrabold">
+                    Giáo viên đã kết thúc bài thi sớm
+                  </strong>
+                  <span>
+                    Hệ thống đã dừng đồng hồ đếm ngược, tự động thu bài làm của bạn, khóa đường link QR và đồng bộ điểm vào Bảng Điểm cuối cùng của Giáo viên.
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
           <ExamResultView
             exam={activeExam}
             answers={userAnswers}
             result={examResult}
-            onRetake={handleRetakeExam}
+            onRetake={examResult.autoSubmittedByTeacher ? handleExitExam : handleRetakeExam}
             onBackToHome={handleExitExam}
             onPrint={() => handleOpenPrint(activeExam)}
             onViewAdmin={() => {

@@ -431,8 +431,13 @@ function broadcastSSE(eventType: string, data: any) {
     eventType === 'submissions_reset'
   ) {
     touchSyncVersion('submissions', now);
-  } else if (eventType === 'assignment_updated') touchSyncVersion('assignments', now);
-  else if (eventType === 'custom_exams_updated') touchSyncVersion('customExams', now);
+  } else if (
+    eventType === 'assignment_updated' ||
+    eventType === 'exam_session_ended' ||
+    eventType === 'exam_session_reopened'
+  ) {
+    touchSyncVersion('assignments', now);
+  } else if (eventType === 'custom_exams_updated') touchSyncVersion('customExams', now);
   else if (eventType === 'mistakes_updated') touchSyncVersion('mistakes', now);
   else if (eventType === 'visitor_stats_updated') touchSyncVersion('visitorStats', now);
   else if (eventType === 'sync_all_updated') {
@@ -2079,8 +2084,8 @@ async function loadAssignmentsFromCloudSql(): Promise<void> {
       if (!k || !jsonStr) continue;
       try {
         const parsed = JSON.parse(jsonStr);
-        if (parsed && parsed.exam) {
-          if (parsed.exam.id && deletedDocIds.has(String(parsed.exam.id))) continue;
+        if (parsed && (parsed.exam || k.startsWith('closed_lock__'))) {
+          if (parsed.exam?.id && deletedDocIds.has(String(parsed.exam.id))) continue;
           sharedAssignmentsMap.set(k, parsed);
           loadedAny = true;
         }
@@ -2161,6 +2166,343 @@ async function lookupAssignmentFromCloudSqlOrPeers(
   return null;
 }
 
+interface ClosedSessionInfo {
+  isClosed: boolean;
+  closedAt?: string;
+  closedAtMs?: number;
+  closedBy?: string;
+  closedByName?: string;
+  examId?: string;
+  examCode?: string;
+  teacherUsername?: string;
+  scope?: 'single' | 'all_teacher' | 'all_system';
+  reason?: string;
+}
+
+function normalizeSessionKeyPart(val?: string | null): string {
+  return String(val || '')
+    .trim()
+    .replace(/^@+/, '')
+    .toLowerCase();
+}
+
+function buildClosedLockKey(teacherNorm: string, examNorm: string): string {
+  return `closed_lock__${teacherNorm || 'global'}__${examNorm || 'all'}`;
+}
+
+function getClosedSessionInfoFromMemory(params: {
+  examId?: string;
+  examCode?: string;
+  teacherUsername?: string;
+  record?: any;
+}): ClosedSessionInfo {
+  const teacherNorm = normalizeSessionKeyPart(
+    params.teacherUsername || params.record?.config?.teacherUsername
+  );
+  const examIdNorm = normalizeSessionKeyPart(params.examId || params.record?.exam?.id);
+  const examCodeNorm = normalizeSessionKeyPart(params.examCode || params.record?.exam?.code);
+  const recordTs = Number(params.record?.timestampMs || 0);
+
+  // 1. Direct closed flag on the matched assignment record itself
+  if (params.record && params.record.isClosed === true) {
+    return {
+      isClosed: true,
+      closedAt: params.record.closedAt || undefined,
+      closedAtMs: Number(params.record.closedAtMs || 0) || undefined,
+      closedBy: params.record.closedBy || teacherNorm || undefined,
+      closedByName: params.record.closedByName || params.record?.config?.teacherName || undefined,
+      examId: params.record?.exam?.id || params.examId || undefined,
+      examCode: params.record?.exam?.code || params.examCode || undefined,
+      teacherUsername: teacherNorm || undefined,
+      scope: 'single',
+      reason: params.record.closedReason || 'Giáo viên đã kết thúc bài thi sớm và chốt bảng điểm.',
+    };
+  }
+
+  // 2. Check specific exam lock keys (teacher-scoped first, then global)
+  const specificLockKeys: string[] = [];
+  if (teacherNorm) {
+    if (examIdNorm) specificLockKeys.push(buildClosedLockKey(teacherNorm, examIdNorm));
+    if (examCodeNorm) specificLockKeys.push(buildClosedLockKey(teacherNorm, examCodeNorm));
+  }
+  if (examIdNorm) specificLockKeys.push(buildClosedLockKey('global', examIdNorm));
+  if (examCodeNorm) specificLockKeys.push(buildClosedLockKey('global', examCodeNorm));
+
+  for (const lk of specificLockKeys) {
+    const lockRec = sharedAssignmentsMap.get(lk);
+    if (lockRec && lockRec.isClosed === true) {
+      const lockMs = Number(lockRec.closedAtMs || lockRec.timestampMs || 0);
+      // If a brand-new assignment for this exam was created AFTER the lock, treat as reopened
+      if (recordTs > 0 && lockMs > 0 && recordTs > lockMs) {
+        continue;
+      }
+      return {
+        isClosed: true,
+        closedAt: lockRec.closedAt || lockRec.updatedAt || undefined,
+        closedAtMs: lockMs || undefined,
+        closedBy: lockRec.closedBy || teacherNorm || undefined,
+        closedByName: lockRec.closedByName || undefined,
+        examId: lockRec.examId || params.examId || undefined,
+        examCode: lockRec.examCode || params.examCode || undefined,
+        teacherUsername: lockRec.teacherUsername || teacherNorm || undefined,
+        scope: 'single',
+        reason: lockRec.reason || 'Giáo viên đã kết thúc bài thi sớm và chốt bảng điểm.',
+      };
+    }
+  }
+
+  // 3. Check teacher-wide "all sessions ended" lock
+  if (teacherNorm) {
+    const teacherAllLock = sharedAssignmentsMap.get(buildClosedLockKey(teacherNorm, 'all'));
+    if (teacherAllLock && teacherAllLock.isClosed === true) {
+      const lockMs = Number(teacherAllLock.closedAtMs || teacherAllLock.timestampMs || 0);
+      if (!(recordTs > 0 && lockMs > 0 && recordTs > lockMs)) {
+        return {
+          isClosed: true,
+          closedAt: teacherAllLock.closedAt || teacherAllLock.updatedAt || undefined,
+          closedAtMs: lockMs || undefined,
+          closedBy: teacherAllLock.closedBy || teacherNorm,
+          closedByName: teacherAllLock.closedByName || undefined,
+          examId: params.examId || undefined,
+          examCode: params.examCode || undefined,
+          teacherUsername: teacherNorm,
+          scope: 'all_teacher',
+          reason:
+            teacherAllLock.reason || 'Giáo viên đã kết thúc bài thi sớm và chốt bảng điểm.',
+        };
+      }
+    }
+  }
+
+  // 4. Check system-wide global lock (if admin closed all)
+  const globalAllLock = sharedAssignmentsMap.get(buildClosedLockKey('global', 'all'));
+  if (globalAllLock && globalAllLock.isClosed === true) {
+    const lockMs = Number(globalAllLock.closedAtMs || globalAllLock.timestampMs || 0);
+    if (!(recordTs > 0 && lockMs > 0 && recordTs > lockMs)) {
+      return {
+        isClosed: true,
+        closedAt: globalAllLock.closedAt || globalAllLock.updatedAt || undefined,
+        closedAtMs: lockMs || undefined,
+        closedBy: globalAllLock.closedBy || 'admin',
+        closedByName: globalAllLock.closedByName || 'Quản trị viên',
+        examId: params.examId || undefined,
+        examCode: params.examCode || undefined,
+        teacherUsername: teacherNorm || undefined,
+        scope: 'all_system',
+        reason:
+          globalAllLock.reason || 'Giáo viên đã kết thúc bài thi sớm và chốt bảng điểm.',
+      };
+    }
+  }
+
+  return { isClosed: false };
+}
+
+async function resolveClosedSessionInfoAsync(params: {
+  examId?: string;
+  examCode?: string;
+  teacherUsername?: string;
+  record?: any;
+  req?: Request;
+}): Promise<ClosedSessionInfo> {
+  const localInfo = getClosedSessionInfoFromMemory(params);
+  if (localInfo.isClosed) return localInfo;
+
+  // Check Cloud SQL for any newly written lock keys from another instance
+  const teacherNorm = normalizeSessionKeyPart(
+    params.teacherUsername || params.record?.config?.teacherUsername
+  );
+  const examIdNorm = normalizeSessionKeyPart(params.examId || params.record?.exam?.id);
+  const examCodeNorm = normalizeSessionKeyPart(params.examCode || params.record?.exam?.code);
+  const lockKeysToCheck: string[] = [];
+  if (teacherNorm) {
+    if (examIdNorm) lockKeysToCheck.push(buildClosedLockKey(teacherNorm, examIdNorm));
+    if (examCodeNorm) lockKeysToCheck.push(buildClosedLockKey(teacherNorm, examCodeNorm));
+    lockKeysToCheck.push(buildClosedLockKey(teacherNorm, 'all'));
+  }
+  if (examIdNorm) lockKeysToCheck.push(buildClosedLockKey('global', examIdNorm));
+  if (examCodeNorm) lockKeysToCheck.push(buildClosedLockKey('global', examCodeNorm));
+  lockKeysToCheck.push(buildClosedLockKey('global', 'all'));
+
+  const uniqueLockKeys = Array.from(new Set(lockKeysToCheck)).map((k) => k.slice(0, 200));
+  if (uniqueLockKeys.length > 0) {
+    try {
+      await ensureSharedCloudSqlStore();
+      const placeholders = uniqueLockKeys.map((_, idx) => `$${idx + 1}`).join(', ');
+      const rows = await pgQueryParams(
+        `SELECT assignment_key, record_json FROM agritech_qr_assignments_store WHERE assignment_key IN (${placeholders});`,
+        uniqueLockKeys
+      );
+      if (rows.length > 0) {
+        let changed = false;
+        for (const [keyName, jsonStr] of rows) {
+          if (!keyName || !jsonStr) continue;
+          try {
+            const parsed = JSON.parse(String(jsonStr));
+            if (parsed && typeof parsed === 'object') {
+              sharedAssignmentsMap.set(String(keyName), parsed);
+              changed = true;
+            }
+          } catch {}
+        }
+        if (changed) {
+          return getClosedSessionInfoFromMemory(params);
+        }
+      }
+    } catch {}
+  }
+
+  return { isClosed: false };
+}
+
+function renderClosedExamHtml(exam: any, closedInfo: ClosedSessionInfo): string {
+  const titleSafe = escapeHtmlServer(exam?.title || 'Bài thi Công nghệ Nông nghiệp THPT');
+  const codeSafe = escapeHtmlServer(exam?.code || closedInfo.examCode || '---');
+  const teacherDisplay = closedInfo.closedByName
+    ? `${closedInfo.closedByName}${closedInfo.closedBy ? ` (@${closedInfo.closedBy})` : ''}`
+    : closedInfo.closedBy
+    ? `@${closedInfo.closedBy}`
+    : 'Giáo viên';
+  const teacherSafe = escapeHtmlServer(teacherDisplay);
+  const closedAtFormatted = closedInfo.closedAt
+    ? escapeHtmlServer(new Date(closedInfo.closedAt).toLocaleString('vi-VN'))
+    : '';
+  const reasonSafe = escapeHtmlServer(
+    closedInfo.reason ||
+      'Giáo viên đã kết thúc bài thi sớm và chốt danh sách Bảng Điểm cuối cùng.'
+  );
+
+  return `<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#991b1b" />
+  <title>Phiên thi đã kết thúc · Mã đề ${codeSafe}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: linear-gradient(180deg, #fef2f2 0%, #f8fafc 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #0f172a;
+    }
+    .card {
+      width: 100%;
+      max-width: 480px;
+      background: #ffffff;
+      border: 2px solid #fecaca;
+      border-radius: 22px;
+      padding: 28px 24px;
+      box-shadow: 0 20px 40px -15px rgba(153, 27, 27, 0.16);
+      text-align: center;
+    }
+    .icon-box {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 14px;
+      border-radius: 18px;
+      background: #fee2e2;
+      color: #b91c1c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      font-weight: 800;
+    }
+    .badge {
+      display: inline-block;
+      background: #dc2626;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      padding: 5px 12px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      font-weight: 800;
+      color: #991b1b;
+      line-height: 1.3;
+    }
+    p {
+      margin: 0;
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.55;
+    }
+    .meta {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 14px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      text-align: left;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px dashed #e2e8f0;
+    }
+    .meta-row:last-child { border-bottom: none; }
+    .meta-label { color: #64748b; font-weight: 600; }
+    .meta-value { color: #0f172a; font-weight: 700; text-align: right; }
+    .foot {
+      margin-top: 16px;
+      font-size: 12px;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-box">🔒</div>
+    <div class="badge">Phiên thi đã kết thúc · Link QR đã khóa</div>
+    <h1>Link làm bài đã bị khóa bởi Giáo viên</h1>
+    <p>${reasonSafe} Học sinh không thể truy cập hoặc làm thêm bài thi này nữa.</p>
+    <div class="meta">
+      <div class="meta-row">
+        <span class="meta-label">Đề thi:</span>
+        <span class="meta-value">${titleSafe}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Mã đề:</span>
+        <span class="meta-value">${codeSafe}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Giáo viên phụ trách:</span>
+        <span class="meta-value">${teacherSafe}</span>
+      </div>
+      ${
+        closedAtFormatted
+          ? `<div class="meta-row">
+        <span class="meta-label">Thời điểm kết thúc:</span>
+        <span class="meta-value">${closedAtFormatted}</span>
+      </div>`
+          : ''
+      }
+    </div>
+    <div class="foot">
+      Nếu cần hỗ trợ hoặc thi bù, vui lòng liên hệ trực tiếp với Giáo viên bộ môn.
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 app.post('/api/assignments', async (req: Request, res: Response) => {
   const { exam, config } = req.body || {};
   if (!exam || (!exam.id && !exam.code)) {
@@ -2231,6 +2573,8 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
       }
     : examWithoutBlob;
 
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
   const record = {
     exam: mergedExamForAssignment,
     config: normalizedCfg,
@@ -2238,22 +2582,32 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
     expiresAt: 'never',
     unlimitedAttempts: true,
     anytimeAccess: true,
-    updatedAt: new Date().toISOString(),
-    timestampMs: Date.now(),
+    isClosed: false,
+    closedAt: null,
+    closedAtMs: null,
+    closedBy: null,
+    closedByName: null,
+    updatedAt: nowIso,
+    timestampMs: nowMs,
   };
 
   const keysToPersist: string[] = [];
+  const tNorm = normalizeSessionKeyPart(tUser);
+  const lockKeysToReopen: string[] = [];
+
   if (exam.id) {
     const idStr = String(exam.id);
     const idLower = idStr.toLowerCase();
     sharedAssignmentsMap.set(idStr, record);
     sharedAssignmentsMap.set(idLower, record);
     keysToPersist.push(idStr, idLower);
-    if (tUser) {
-      const tKey = `${tUser.toLowerCase()}__${idLower}`;
+    if (tNorm) {
+      const tKey = `${tNorm}__${idLower}`;
       sharedAssignmentsMap.set(tKey, record);
       keysToPersist.push(tKey);
+      lockKeysToReopen.push(buildClosedLockKey(tNorm, idLower));
     }
+    lockKeysToReopen.push(buildClosedLockKey('global', idLower));
   }
   if (exam.code) {
     const codeStr = String(exam.code);
@@ -2261,23 +2615,48 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
     sharedAssignmentsMap.set(codeStr, record);
     sharedAssignmentsMap.set(codeLower, record);
     keysToPersist.push(codeStr, codeLower);
-    if (tUser) {
-      const tCodeKey = `${tUser.toLowerCase()}__${codeLower}`;
+    if (tNorm) {
+      const tCodeKey = `${tNorm}__${codeLower}`;
       sharedAssignmentsMap.set(tCodeKey, record);
       keysToPersist.push(tCodeKey);
+      lockKeysToReopen.push(buildClosedLockKey(tNorm, codeLower));
     }
+    lockKeysToReopen.push(buildClosedLockKey('global', codeLower));
   }
-  if (tUser) {
-    const latestTKey = `teacher_latest__${tUser.toLowerCase()}`;
+  if (tNorm) {
+    const latestTKey = `teacher_latest__${tNorm}`;
     sharedAssignmentsMap.set(latestTKey, record);
     keysToPersist.push(latestTKey);
   }
   sharedAssignmentsMap.set('__latest_active__', record);
   keysToPersist.push('__latest_active__');
 
+  // Clear any prior closed lock for this specific exam when teacher assigns it again
+  const reopenedLockKeys: string[] = [];
+  for (const lk of Array.from(new Set(lockKeysToReopen))) {
+    const existingLock = sharedAssignmentsMap.get(lk);
+    if (existingLock && existingLock.isClosed === true) {
+      const openMarker = {
+        ...existingLock,
+        isClosed: false,
+        reopenedAt: nowIso,
+        timestampMs: nowMs,
+        updatedAt: nowIso,
+      };
+      sharedAssignmentsMap.set(lk, openMarker);
+      reopenedLockKeys.push(lk);
+    }
+  }
+
   persistAssignments();
   if (!isPeerReplicatedRequest(req)) {
     await upsertAssignmentKeysToCloudSql(Array.from(new Set(keysToPersist)), record);
+    for (const lk of reopenedLockKeys) {
+      const rec = sharedAssignmentsMap.get(lk);
+      if (rec) {
+        await upsertAssignmentKeysToCloudSql([lk], rec);
+      }
+    }
   }
 
   // Replicate to counterpart origin (ais-dev <-> ais-pre) so QR code works permanently across both URLs
@@ -2326,6 +2705,441 @@ app.delete('/api/assignments/active', (req: Request, res: Response) => {
   res.json({ success: true, permanentQrPreserved: true });
 });
 
+// Public lightweight read-only status check used by active student exam sessions (polling fallback alongside SSE)
+app.get('/api/assignments/session-status', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const qExamId = String(req.query.examId || req.query.exam || '').trim();
+  const qCode = String(req.query.code || req.query.examCode || '').trim();
+  const qTeacher = normalizeSessionKeyPart(String(req.query.teacher || req.query.t || ''));
+
+  let matchedRecord: any = null;
+  const keys = [qExamId, qCode].filter(Boolean);
+  for (const k of keys) {
+    const rec =
+      (qTeacher ? sharedAssignmentsMap.get(`${qTeacher}__${k.toLowerCase()}`) : null) ||
+      sharedAssignmentsMap.get(k) ||
+      sharedAssignmentsMap.get(k.toLowerCase());
+    if (rec && rec.exam) {
+      matchedRecord = rec;
+      break;
+    }
+  }
+
+  const closedInfo = await resolveClosedSessionInfoAsync({
+    examId: qExamId || matchedRecord?.exam?.id,
+    examCode: qCode || matchedRecord?.exam?.code,
+    teacherUsername: qTeacher || matchedRecord?.config?.teacherUsername,
+    record: matchedRecord,
+    req,
+  });
+
+  res.json({
+    success: true,
+    ...closedInfo,
+  });
+});
+
+// List active & closed exam sessions for the logged-in teacher (or all for admin)
+app.get('/api/assignments/sessions', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const caller = getVerifiedAuthIdentity(req);
+  const requestedTeacher = normalizeSessionKeyPart(String(req.query.teacher || ''));
+  const scopeTeacher = caller
+    ? caller.isAdmin
+      ? requestedTeacher
+      : caller.normalizedUsername
+    : requestedTeacher;
+
+  const sessionMap = new Map<
+    string,
+    {
+      examId: string;
+      examCode: string;
+      examTitle: string;
+      className?: string;
+      teacherUsername?: string;
+      teacherName?: string;
+      isClosed: boolean;
+      closedAt?: string;
+      updatedAt?: string;
+      timestampMs: number;
+    }
+  >();
+
+  sharedAssignmentsMap.forEach((rec, key) => {
+    if (!rec || key.startsWith('closed_lock__') || key === '__latest_active__' || key.startsWith('teacher_latest__')) {
+      return;
+    }
+    if (!rec.exam || (!rec.exam.id && !rec.exam.code)) return;
+    const recTeacher = normalizeSessionKeyPart(rec.config?.teacherUsername);
+    if (scopeTeacher && recTeacher !== scopeTeacher) return;
+
+    const dedupKey = `${recTeacher || 'global'}__${normalizeSessionKeyPart(rec.exam.code || rec.exam.id)}`;
+    const closedInfo = getClosedSessionInfoFromMemory({
+      examId: rec.exam.id,
+      examCode: rec.exam.code,
+      teacherUsername: recTeacher,
+      record: rec,
+    });
+    const ts = Number(rec.timestampMs || 0);
+    const existing = sessionMap.get(dedupKey);
+    if (!existing || ts >= existing.timestampMs) {
+      sessionMap.set(dedupKey, {
+        examId: String(rec.exam.id || rec.exam.code),
+        examCode: String(rec.exam.code || rec.exam.id),
+        examTitle: String(rec.exam.title || `Mã đề ${rec.exam.code || rec.exam.id}`),
+        className: rec.config?.className || undefined,
+        teacherUsername: recTeacher || undefined,
+        teacherName: rec.config?.teacherName || undefined,
+        isClosed: closedInfo.isClosed,
+        closedAt: closedInfo.closedAt,
+        updatedAt: rec.updatedAt || undefined,
+        timestampMs: ts,
+      });
+    }
+  });
+
+  // Also collect active closed lock markers (e.g. teacher ended all sessions or a built-in exam code directly)
+  const activeLocks: ClosedSessionInfo[] = [];
+  sharedAssignmentsMap.forEach((rec, key) => {
+    if (!key.startsWith('closed_lock__') || !rec || rec.isClosed !== true) return;
+    const lockTeacher = normalizeSessionKeyPart(rec.teacherUsername || rec.closedBy);
+    if (scopeTeacher && lockTeacher && lockTeacher !== scopeTeacher && lockTeacher !== 'global') {
+      return;
+    }
+    activeLocks.push({
+      isClosed: true,
+      closedAt: rec.closedAt || rec.updatedAt,
+      closedAtMs: Number(rec.closedAtMs || rec.timestampMs || 0),
+      closedBy: rec.closedBy,
+      closedByName: rec.closedByName,
+      examId: rec.examId,
+      examCode: rec.examCode,
+      teacherUsername: rec.teacherUsername,
+      scope: rec.scope || 'single',
+      reason: rec.reason,
+    });
+  });
+
+  res.json({
+    success: true,
+    sessions: Array.from(sessionMap.values()).sort((a, b) => b.timestampMs - a.timestampMs),
+    activeLocks: activeLocks.sort((a, b) => (b.closedAtMs || 0) - (a.closedAtMs || 0)),
+  });
+});
+
+// Teacher / Admin ends an exam session early: immediately stops student timers, auto-submits, locks QR link, and finalizes scoreboard
+app.post('/api/assignments/end-session', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const caller = getVerifiedAuthIdentity(req);
+  if (!caller) {
+    return res.status(401).json({
+      success: false,
+      message: 'Vui lòng đăng nhập tài khoản Giáo viên hoặc Quản trị viên để kết thúc bài thi!',
+    });
+  }
+  if (!caller.isTeacherOrAdmin) {
+    return res.status(403).json({
+      success: false,
+      message: 'Chỉ tài khoản Giáo viên hoặc Quản trị viên mới có quyền kết thúc bài thi sớm!',
+    });
+  }
+
+  const rawExamId = String(req.body?.examId || '').trim();
+  const rawExamCode = String(req.body?.examCode || '').trim();
+  const closeAllForTeacher = Boolean(req.body?.closeAllForTeacher) || (!rawExamId && !rawExamCode);
+  const requestedTeacher = normalizeSessionKeyPart(req.body?.teacherUsername);
+  const targetTeacher = caller.isAdmin
+    ? requestedTeacher || caller.normalizedUsername
+    : caller.normalizedUsername;
+
+  const { users } = loadDataUsers(false);
+  const callerProfile = users.find(
+    (u) => cleanAuthString(u.username).replace(/^@+/, '').toLowerCase() === caller.normalizedUsername
+  );
+  const closedByName = String(
+    req.body?.closedByName || callerProfile?.fullName || caller.username
+  ).trim();
+  const reason = String(
+    req.body?.reason ||
+      'Giáo viên đã kết thúc bài thi sớm và chốt danh sách Bảng Điểm cuối cùng.'
+  ).trim();
+
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const keysToPersistToCloudSql: Array<{ key: string; record: any }> = [];
+
+  // 1. Update matching assignment records in sharedAssignmentsMap
+  const examIdNorm = normalizeSessionKeyPart(rawExamId);
+  const examCodeNorm = normalizeSessionKeyPart(rawExamCode);
+  const matchedExamCodes = new Set<string>();
+  const matchedExamIds = new Set<string>();
+  if (rawExamCode) matchedExamCodes.add(rawExamCode);
+  if (rawExamId) matchedExamIds.add(rawExamId);
+
+  sharedAssignmentsMap.forEach((rec, key) => {
+    if (!rec || key.startsWith('closed_lock__') || !rec.exam) return;
+    const recTeacher = normalizeSessionKeyPart(rec.config?.teacherUsername);
+    const recExamId = normalizeSessionKeyPart(rec.exam?.id);
+    const recExamCode = normalizeSessionKeyPart(rec.exam?.code);
+
+    const teacherMatches = !targetTeacher || recTeacher === targetTeacher || (!recTeacher && caller.isAdmin);
+    if (!teacherMatches) return;
+
+    const examMatches =
+      closeAllForTeacher ||
+      (examIdNorm && (recExamId === examIdNorm || recExamCode === examIdNorm)) ||
+      (examCodeNorm && (recExamCode === examCodeNorm || recExamId === examCodeNorm));
+
+    if (examMatches) {
+      const updatedRec = {
+        ...rec,
+        isClosed: true,
+        closedAt: nowIso,
+        closedAtMs: nowMs,
+        closedBy: caller.normalizedUsername,
+        closedByName,
+        closedReason: reason,
+        updatedAt: nowIso,
+      };
+      sharedAssignmentsMap.set(key, updatedRec);
+      keysToPersistToCloudSql.push({ key, record: updatedRec });
+      if (rec.exam?.code) matchedExamCodes.add(String(rec.exam.code));
+      if (rec.exam?.id) matchedExamIds.add(String(rec.exam.id));
+    }
+  });
+
+  // 2. Write authoritative closed_lock__ keys so even built-in exams or fresh QR scans are immediately locked
+  const lockBase = {
+    isClosed: true,
+    closedAt: nowIso,
+    closedAtMs: nowMs,
+    closedBy: caller.normalizedUsername,
+    closedByName,
+    teacherUsername: targetTeacher || undefined,
+    examId: rawExamId || undefined,
+    examCode: rawExamCode || undefined,
+    scope: closeAllForTeacher ? 'all_teacher' : 'single',
+    reason,
+    updatedAt: nowIso,
+    timestampMs: nowMs,
+  };
+
+  const lockKeys: string[] = [];
+  if (closeAllForTeacher) {
+    lockKeys.push(buildClosedLockKey(targetTeacher || 'global', 'all'));
+    // Also lock individual matched exam codes for this teacher
+    matchedExamCodes.forEach((c) => {
+      lockKeys.push(buildClosedLockKey(targetTeacher || 'global', normalizeSessionKeyPart(c)));
+    });
+    matchedExamIds.forEach((id) => {
+      lockKeys.push(buildClosedLockKey(targetTeacher || 'global', normalizeSessionKeyPart(id)));
+    });
+  } else {
+    if (examIdNorm) {
+      lockKeys.push(buildClosedLockKey(targetTeacher || 'global', examIdNorm));
+      if (caller.isAdmin && !requestedTeacher) {
+        lockKeys.push(buildClosedLockKey('global', examIdNorm));
+      }
+    }
+    if (examCodeNorm) {
+      lockKeys.push(buildClosedLockKey(targetTeacher || 'global', examCodeNorm));
+      if (caller.isAdmin && !requestedTeacher) {
+        lockKeys.push(buildClosedLockKey('global', examCodeNorm));
+      }
+    }
+    matchedExamCodes.forEach((c) => {
+      lockKeys.push(buildClosedLockKey(targetTeacher || 'global', normalizeSessionKeyPart(c)));
+    });
+    matchedExamIds.forEach((id) => {
+      lockKeys.push(buildClosedLockKey(targetTeacher || 'global', normalizeSessionKeyPart(id)));
+    });
+  }
+
+  for (const lk of Array.from(new Set(lockKeys))) {
+    sharedAssignmentsMap.set(lk, lockBase);
+    keysToPersistToCloudSql.push({ key: lk, record: lockBase });
+  }
+
+  persistAssignments();
+  if (!isPeerReplicatedRequest(req)) {
+    for (const item of keysToPersistToCloudSql) {
+      await upsertAssignmentKeysToCloudSql([item.key], item.record);
+    }
+    // Replicate to peer instances forwarding verified Authorization header
+    const peers = getPeerOrigins(req);
+    const peerHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Peer-Replicated': '1',
+    };
+    if (typeof req.headers.authorization === 'string' && req.headers.authorization.trim()) {
+      peerHeaders.Authorization = req.headers.authorization;
+    }
+    peers.forEach((peer) => {
+      fetch(`${peer}/api/assignments/end-session?peerReplicated=1`, {
+        method: 'POST',
+        headers: peerHeaders,
+        body: JSON.stringify({
+          examId: rawExamId || undefined,
+          examCode: rawExamCode || undefined,
+          teacherUsername: targetTeacher || undefined,
+          closeAllForTeacher,
+          closedByName,
+          reason,
+          peerReplicated: true,
+        }),
+      }).catch(() => {});
+    });
+  }
+
+  const eventPayload = {
+    examId: rawExamId || undefined,
+    examCode: rawExamCode || undefined,
+    examCodes: Array.from(matchedExamCodes),
+    examIds: Array.from(matchedExamIds),
+    teacherUsername: targetTeacher || undefined,
+    closeAllForTeacher,
+    closedAt: nowIso,
+    closedAtMs: nowMs,
+    closedBy: caller.normalizedUsername,
+    closedByName,
+    reason,
+  };
+
+  broadcastSSE('exam_session_ended', eventPayload);
+  res.json({
+    success: true,
+    data: eventPayload,
+    message: 'Đã kết thúc bài thi sớm, dừng đồng hồ, tự động thu bài học sinh và khóa link QR thành công!',
+  });
+});
+
+// Teacher / Admin reopens a previously closed exam session / QR link
+app.post('/api/assignments/reopen-session', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const caller = getVerifiedAuthIdentity(req);
+  if (!caller) {
+    return res.status(401).json({
+      success: false,
+      message: 'Vui lòng đăng nhập tài khoản Giáo viên hoặc Quản trị viên!',
+    });
+  }
+  if (!caller.isTeacherOrAdmin) {
+    return res.status(403).json({
+      success: false,
+      message: 'Chỉ tài khoản Giáo viên hoặc Quản trị viên mới có quyền mở lại phòng thi!',
+    });
+  }
+
+  const rawExamId = String(req.body?.examId || '').trim();
+  const rawExamCode = String(req.body?.examCode || '').trim();
+  const reopenAllForTeacher = Boolean(req.body?.reopenAllForTeacher) || (!rawExamId && !rawExamCode);
+  const requestedTeacher = normalizeSessionKeyPart(req.body?.teacherUsername);
+  const targetTeacher = caller.isAdmin
+    ? requestedTeacher || caller.normalizedUsername
+    : caller.normalizedUsername;
+
+  const examIdNorm = normalizeSessionKeyPart(rawExamId);
+  const examCodeNorm = normalizeSessionKeyPart(rawExamCode);
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const keysToPersistToCloudSql: Array<{ key: string; record: any }> = [];
+
+  sharedAssignmentsMap.forEach((rec, key) => {
+    if (!rec) return;
+    if (key.startsWith('closed_lock__')) {
+      const lockTeacher = normalizeSessionKeyPart(rec.teacherUsername || rec.closedBy);
+      const teacherMatches =
+        !targetTeacher || lockTeacher === targetTeacher || (caller.isAdmin && lockTeacher === 'global');
+      if (!teacherMatches) return;
+      const examMatches =
+        reopenAllForTeacher ||
+        key === buildClosedLockKey(targetTeacher || 'global', 'all') ||
+        (examIdNorm && key.endsWith(`__${examIdNorm}`)) ||
+        (examCodeNorm && key.endsWith(`__${examCodeNorm}`));
+      if (examMatches && rec.isClosed === true) {
+        const reopenedLock = {
+          ...rec,
+          isClosed: false,
+          reopenedAt: nowIso,
+          updatedAt: nowIso,
+          timestampMs: nowMs,
+        };
+        sharedAssignmentsMap.set(key, reopenedLock);
+        keysToPersistToCloudSql.push({ key, record: reopenedLock });
+      }
+      return;
+    }
+
+    if (rec.exam && rec.isClosed === true) {
+      const recTeacher = normalizeSessionKeyPart(rec.config?.teacherUsername);
+      const teacherMatches = !targetTeacher || recTeacher === targetTeacher || (!recTeacher && caller.isAdmin);
+      if (!teacherMatches) return;
+      const recExamId = normalizeSessionKeyPart(rec.exam?.id);
+      const recExamCode = normalizeSessionKeyPart(rec.exam?.code);
+      const examMatches =
+        reopenAllForTeacher ||
+        (examIdNorm && (recExamId === examIdNorm || recExamCode === examIdNorm)) ||
+        (examCodeNorm && (recExamCode === examCodeNorm || recExamId === examCodeNorm));
+      if (examMatches) {
+        const reopenedRec = {
+          ...rec,
+          isClosed: false,
+          closedAt: null,
+          closedAtMs: null,
+          reopenedAt: nowIso,
+          updatedAt: nowIso,
+          timestampMs: nowMs,
+        };
+        sharedAssignmentsMap.set(key, reopenedRec);
+        keysToPersistToCloudSql.push({ key, record: reopenedRec });
+      }
+    }
+  });
+
+  persistAssignments();
+  if (!isPeerReplicatedRequest(req)) {
+    for (const item of keysToPersistToCloudSql) {
+      await upsertAssignmentKeysToCloudSql([item.key], item.record);
+    }
+    const peers = getPeerOrigins(req);
+    const peerHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Peer-Replicated': '1',
+    };
+    if (typeof req.headers.authorization === 'string' && req.headers.authorization.trim()) {
+      peerHeaders.Authorization = req.headers.authorization;
+    }
+    peers.forEach((peer) => {
+      fetch(`${peer}/api/assignments/reopen-session?peerReplicated=1`, {
+        method: 'POST',
+        headers: peerHeaders,
+        body: JSON.stringify({
+          examId: rawExamId || undefined,
+          examCode: rawExamCode || undefined,
+          teacherUsername: targetTeacher || undefined,
+          reopenAllForTeacher,
+          peerReplicated: true,
+        }),
+      }).catch(() => {});
+    });
+  }
+
+  const payload = {
+    examId: rawExamId || undefined,
+    examCode: rawExamCode || undefined,
+    teacherUsername: targetTeacher || undefined,
+    reopenAllForTeacher,
+    reopenedAt: nowIso,
+  };
+  broadcastSSE('exam_session_reopened', payload);
+  res.json({
+    success: true,
+    data: payload,
+    message: 'Đã mở lại đường link QR phòng thi thành công!',
+  });
+});
+
 app.get('/api/assignments/:key', async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   const key = String(req.params.key || '').trim();
@@ -2340,10 +3154,36 @@ app.get('/api/assignments/:key', async (req: Request, res: Response) => {
   if (!found) {
     found = await lookupAssignmentFromCloudSqlOrPeers(key, qTeacher, req);
   }
+  const closedInfo = await resolveClosedSessionInfoAsync({
+    examId: found?.exam?.id || (!isGenericActive ? key : undefined),
+    examCode: found?.exam?.code || (!isGenericActive ? key : undefined),
+    teacherUsername: qTeacher || found?.config?.teacherUsername,
+    record: found,
+    req,
+  });
   if (!found) {
+    if (closedInfo.isClosed) {
+      return res.json({
+        success: true,
+        data: null,
+        sessionClosed: true,
+        closedInfo,
+      });
+    }
     return res.status(404).json({ success: false, message: 'Không tìm thấy đề giao' });
   }
-  res.json({ success: true, data: found });
+  res.json({
+    success: true,
+    data: {
+      ...found,
+      isClosed: closedInfo.isClosed,
+      closedAt: closedInfo.closedAt || found.closedAt || null,
+      closedBy: closedInfo.closedBy || found.closedBy || null,
+      closedByName: closedInfo.closedByName || found.closedByName || null,
+    },
+    sessionClosed: closedInfo.isClosed,
+    closedInfo,
+  });
 });
 
 // Check whether ais-pre-* URL is active or returning HTTP 404 (0-byte blank white page)
@@ -5346,6 +6186,27 @@ app.post('/api/submissions', async (req: Request, res: Response) => {
     }
   }
 
+  // Kiểm tra trạng thái khóa phiên thi: cho phép thu bài tự động (autoSubmittedByTeacher) hoặc trong vòng 90 giây sau khi giáo viên bấm kết thúc sớm; chặn bài nộp mới sau khi đã chốt bảng điểm
+  const isAutoCollectedByTeacher = Boolean(body.autoSubmittedByTeacher);
+  if (!isPeerReplicatedRequest(req) && !isAutoCollectedByTeacher) {
+    const closedCheck = await resolveClosedSessionInfoAsync({
+      examId: rawExamId,
+      examCode: rawExamCode,
+      teacherUsername,
+      req,
+    });
+    if (closedCheck.isClosed && closedCheck.closedAtMs) {
+      const elapsedAfterCloseMs = Date.now() - closedCheck.closedAtMs;
+      if (elapsedAfterCloseMs > 90_000) {
+        return res.status(403).json({
+          success: false,
+          sessionClosed: true,
+          error: 'Phiên thi đã kết thúc và chốt danh sách Bảng Điểm cuối cùng.',
+        });
+      }
+    }
+  }
+
   const newSubmission = {
     id: body.id || `sub_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     studentName: String(body.studentName).trim(),
@@ -5361,7 +6222,11 @@ app.post('/api/submissions', async (req: Request, res: Response) => {
     partIICorrectCount: Number(body.partIICorrectCount) || 0,
     timeSpentSeconds: Number(body.timeSpentSeconds) || 0,
     violationCount: Number(body.violationCount) || 0,
-    isAutoCollected: Boolean(body.isAutoCollected) || Number(body.violationCount) >= 5,
+    isAutoCollected:
+      Boolean(body.isAutoCollected) ||
+      isAutoCollectedByTeacher ||
+      Number(body.violationCount) >= 5,
+    autoSubmittedByTeacher: isAutoCollectedByTeacher,
     teacherUsername: teacherUsername || undefined,
     teacherName: teacherName || undefined,
     submittedAt: body.submittedAt || new Date().toISOString(),
@@ -9280,11 +10145,19 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
         return 'Cần cố gắng';
       }
 
-      window.confirmSubmitExam = function(isAutoCollect) {
+      window.confirmSubmitExam = function(isAutoCollect, autoCollectMode) {
         closeSubmitModal();
         if (isSubmitted) return;
         isSubmitted = true;
         if (timerInterval) clearInterval(timerInterval);
+        var isTeacherEnded = autoCollectMode === 'teacher_ended';
+        if (isTeacherEnded) {
+          remainingSeconds = 0;
+          var tdEl = document.getElementById('timerDisplay');
+          if (tdEl) tdEl.textContent = '00:00';
+          var tbEl = document.getElementById('timerBox');
+          if (tbEl) tbEl.classList.add('urgent');
+        }
 
         var studentName = String(document.getElementById('studentNameInput').value || '').trim() || 'Học sinh QR';
         var studentClass = String(document.getElementById('studentClassInput').value || '').trim() || 'Ôn THPT';
@@ -9385,11 +10258,13 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
         var timeSpentSeconds = Math.max(1, totalSeconds - remainingSeconds);
         var rank = getRank(totalScore);
 
-        var autoCollectBanner = (isAutoCollect || isAutoCollectedBySystem || violationCount >= MAX_VIOLATIONS)
-          ? '<div style="margin-top:10px;padding:10px 12px;border-radius:11px;background:#dc2626;color:#ffffff;font-size:13px;font-weight:800;">🚨 HỆ THỐNG ĐÃ TỰ ĐỘNG THU BÀI (Do học sinh thoát khỏi giao diện làm bài ' + violationCount + '/5 lần)</div>'
-          : (violationCount > 0
-              ? '<div style="margin-top:8px;padding:7px 11px;border-radius:9px;background:rgba(254,226,226,0.2);border:1px solid #fca5a5;color:#fecaca;font-size:12px;font-weight:700;">⚠️ Số lần thoát giao diện làm bài: ' + violationCount + '/5 lần</div>'
-              : '');
+        var autoCollectBanner = isTeacherEnded
+          ? '<div style="margin-top:10px;padding:10px 12px;border-radius:11px;background:#dc2626;color:#ffffff;font-size:13px;font-weight:800;">🛑 GIÁO VIÊN ĐÃ KẾT THÚC BÀI THI SỚM — Hệ thống đã dừng đồng hồ, tự động thu bài của bạn và chốt điểm về Bảng Điểm Giáo Viên.</div>'
+          : ((isAutoCollect || isAutoCollectedBySystem || violationCount >= MAX_VIOLATIONS)
+              ? '<div style="margin-top:10px;padding:10px 12px;border-radius:11px;background:#dc2626;color:#ffffff;font-size:13px;font-weight:800;">🚨 HỆ THỐNG ĐÃ TỰ ĐỘNG THU BÀI (Do học sinh thoát khỏi giao diện làm bài ' + violationCount + '/5 lần)</div>'
+              : (violationCount > 0
+                  ? '<div style="margin-top:8px;padding:7px 11px;border-radius:9px;background:rgba(254,226,226,0.2);border:1px solid #fca5a5;color:#fecaca;font-size:12px;font-weight:700;">⚠️ Số lần thoát giao diện làm bài: ' + violationCount + '/5 lần</div>'
+                  : ''));
 
         var resultEl = document.getElementById('resultSection');
         resultEl.style.display = 'block';
@@ -9413,7 +10288,9 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
               '<div><div style="font-size:11px;color:#a7f3d0;">Thời gian làm bài</div><div style="font-size:16px;font-weight:800;">' + Math.floor(timeSpentSeconds / 60) + ' phút ' + (timeSpentSeconds % 60) + ' giây</div></div>' +
             '</div>' +
             '<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">' +
-              '<button type="button" onclick="window.location.reload()" style="padding:9px 16px;border-radius:10px;border:none;background:#fde68a;color:#78350f;font-weight:800;cursor:pointer;">🔄 Làm Lại Đề Này</button>' +
+              (isTeacherEnded
+                ? '<div style="padding:9px 14px;border-radius:10px;background:rgba(254,226,226,0.18);border:1px solid #fca5a5;color:#fee2e2;font-size:12px;font-weight:800;">🔒 Link QR đã được Giáo viên khóa và chốt bảng điểm</div>'
+                : '<button type="button" onclick="window.location.reload()" style="padding:9px 16px;border-radius:10px;border:none;background:#fde68a;color:#78350f;font-weight:800;cursor:pointer;">🔄 Làm Lại Đề Này</button>') +
               '<button type="button" id="retrySyncBtn" onclick="window.retrySubmissionSync()" style="display:none;padding:9px 16px;border-radius:10px;border:1px solid #6ee7b7;background:#065f46;color:#ffffff;font-weight:800;cursor:pointer;">📤 Gửi Lại Điểm Về Giáo Viên</button>' +
             '</div>' +
           '</div>';
@@ -9455,7 +10332,8 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
           partIICorrectCount: partIICorrectCount,
           timeSpentSeconds: timeSpentSeconds,
           violationCount: violationCount,
-          isAutoCollected: Boolean(isAutoCollect || isAutoCollectedBySystem || violationCount >= MAX_VIOLATIONS),
+          isAutoCollected: Boolean(isAutoCollect || isTeacherEnded || isAutoCollectedBySystem || violationCount >= MAX_VIOLATIONS),
+          autoSubmittedByTeacher: Boolean(isTeacherEnded),
           teacherUsername: resolvedTeacherUser,
           teacherName: resolvedTeacherName,
           submittedAt: new Date().toISOString(),
@@ -9606,6 +10484,96 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
           document.getElementById('timerBox').classList.add('urgent');
         }
       }, 1000);
+
+      // Real-time listener: when Teacher clicks "Kết thúc bài thi ngay", immediately stop timer & auto-collect paper
+      (function setupTeacherEndSessionWatch() {
+        var normStr = function(s) {
+          return String(s || '').trim().replace(/^@+/, '').toLowerCase();
+        };
+        var urlP = null;
+        try { urlP = new URLSearchParams(window.location.search || ''); } catch (e) {}
+        var myTeacher = normStr(config.teacherUsername || (urlP && (urlP.get('teacher') || urlP.get('t'))));
+        var myExamId = normStr(exam.id || config.examId);
+        var myExamCode = normStr(exam.code || config.examCode);
+
+        function doesEventMatchMySession(ev) {
+          if (!ev) return false;
+          var evTeacher = normStr(ev.teacherUsername || ev.closedBy);
+          if (evTeacher && myTeacher && evTeacher !== myTeacher) {
+            return false;
+          }
+          if (ev.closeAllForTeacher || ev.scope === 'all_teacher' || ev.scope === 'all_system') {
+            return !evTeacher || !myTeacher || evTeacher === myTeacher;
+          }
+          var evId = normStr(ev.examId);
+          var evCode = normStr(ev.examCode);
+          var listCodes = Array.isArray(ev.examCodes) ? ev.examCodes.map(normStr) : [];
+          var listIds = Array.isArray(ev.examIds) ? ev.examIds.map(normStr) : [];
+          return Boolean(
+            (myExamId && (evId === myExamId || evCode === myExamId || listIds.indexOf(myExamId) !== -1 || listCodes.indexOf(myExamId) !== -1)) ||
+            (myExamCode && (evCode === myExamCode || evId === myExamCode || listCodes.indexOf(myExamCode) !== -1 || listIds.indexOf(myExamCode) !== -1))
+          );
+        }
+
+        var sessionStatusTimer = null;
+        var sessionEventSource = null;
+
+        function forceAutoSubmitByTeacher() {
+          if (isSubmitted) return;
+          if (timerInterval) clearInterval(timerInterval);
+          if (sessionStatusTimer) clearInterval(sessionStatusTimer);
+          if (sessionEventSource) {
+            try { sessionEventSource.close(); } catch (e) {}
+          }
+          var nameInput = document.getElementById('studentNameInput');
+          if (nameInput && !String(nameInput.value || '').trim()) {
+            nameInput.value = 'Học sinh QR';
+          }
+          window.confirmSubmitExam(true, 'teacher_ended');
+        }
+
+        // 1. Instant SSE push from server
+        try {
+          if ('EventSource' in window) {
+            sessionEventSource = new EventSource('/api/submissions/stream?__storage_access_granted=1');
+            sessionEventSource.addEventListener('exam_session_ended', function(e) {
+              try {
+                var parsed = e.data ? JSON.parse(e.data) : null;
+                if (doesEventMatchMySession(parsed)) {
+                  forceAutoSubmitByTeacher();
+                }
+              } catch (err) {}
+            });
+          }
+        } catch (e) {}
+
+        // 2. Reliable 3-second polling fallback (for iOS Safari / Zalo WebView where SSE may pause)
+        function pollSessionClosedStatus() {
+          if (isSubmitted) {
+            if (sessionStatusTimer) clearInterval(sessionStatusTimer);
+            return;
+          }
+          var qs =
+            'examId=' + encodeURIComponent(exam.id || config.examId || '') +
+            '&code=' + encodeURIComponent(exam.code || config.examCode || '') +
+            (myTeacher ? '&teacher=' + encodeURIComponent(myTeacher) : '') +
+            '&_t=' + Date.now();
+          fetch('/api/assignments/session-status?' + qs, { cache: 'no-store' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+              if (data && data.isClosed === true) {
+                forceAutoSubmitByTeacher();
+              }
+            })
+            .catch(function() {});
+        }
+        sessionStatusTimer = setInterval(pollSessionClosedStatus, 3000);
+        document.addEventListener('visibilitychange', function() {
+          if (document.visibilityState === 'visible' && !isSubmitted) {
+            pollSessionClosedStatus();
+          }
+        });
+      })();
 
       renderQuestions();
     })();
@@ -9777,6 +10745,21 @@ async function handleStudentExamHtmlRequest(req: Request, res: Response, next: N
     shuffleQuestions,
     `${resolvedExam.id}_${resolvedExam.code}`
   );
+
+  // Kiểm tra khóa link QR: nếu Giáo viên đã bấm "Kết thúc bài thi ngay", chặn học sinh mới truy cập vào làm thêm
+  const closedInfo = await resolveClosedSessionInfoAsync({
+    examId: finalExam.id,
+    examCode: finalExam.code,
+    teacherUsername,
+    record: storedRecord,
+    req,
+  });
+  if (closedInfo.isClosed) {
+    const lockedHtml = renderClosedExamHtml(finalExam, closedInfo);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return res.status(200).send(lockedHtml);
+  }
 
   const html = renderStudentExamHtml(finalExam, {
     examId: finalExam.id,

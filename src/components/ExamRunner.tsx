@@ -22,6 +22,7 @@ import { TrueFalseScenarioDisplay } from './TrueFalseScenarioDisplay';
 import { DocumentTable } from './DocumentTable';
 import { DocumentChart } from './DocumentChart';
 import { extractTableAndCitationFromBlock } from '../data/provincialAndOfficialExams';
+import { subscribeRealtimeEvent } from '../services/realtimeSyncService';
 
 interface ExamRunnerProps {
   exam: Exam;
@@ -35,6 +36,7 @@ interface ExamRunnerProps {
   customDurationMinutes?: number;
   isPausedForEntry?: boolean;
   teacherNote?: string;
+  assignedTeacherUsername?: string;
   onUpdateStudentInfo?: (info: {
     name: string;
     studentClass: string;
@@ -53,6 +55,7 @@ export const ExamRunner: React.FC<ExamRunnerProps> = ({
   customDurationMinutes,
   isPausedForEntry = false,
   teacherNote,
+  assignedTeacherUsername,
   onUpdateStudentInfo,
   onAssignQr,
 }) => {
@@ -200,10 +203,17 @@ export const ExamRunner: React.FC<ExamRunnerProps> = ({
     }
   };
 
-  const executeFinalSubmit = (overrideViolationCount?: number, forceTimeZero = false) => {
+  const executeFinalSubmit = (
+    overrideViolationCount?: number,
+    forceTimeZero = false,
+    autoSubmittedByTeacher = false
+  ) => {
     if (hasSubmittedRef.current) return;
     hasSubmittedRef.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
+    if (forceTimeZero) {
+      setSecondsRemaining(0);
+    }
 
     const st = latestStateRef.current;
     const finalViolations =
@@ -217,12 +227,100 @@ export const ExamRunner: React.FC<ExamRunnerProps> = ({
       partII: st.partIIAnswers,
       bookmarked: st.bookmarked,
       timeRemainingSeconds: rem,
-      timeSpentSeconds: st.effectiveDuration * 60 - rem,
+      timeSpentSeconds: Math.max(1, st.effectiveDuration * 60 - rem),
       studentInfo: st.studentInfo,
       violationCount: finalViolations,
+      autoSubmittedByTeacher,
     };
     onSubmit(answers);
   };
+
+  // Real-time watch: if Teacher clicks "Kết thúc bài thi ngay", immediately stop countdown timer & auto-submit
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const norm = (s?: string | null) =>
+      String(s || '')
+        .trim()
+        .replace(/^@+/, '')
+        .toLowerCase();
+    const myTeacher = norm(assignedTeacherUsername);
+    const myExamId = norm(exam.id);
+    const myExamCode = norm(exam.code);
+
+    const doesEventMatch = (ev: any): boolean => {
+      if (!ev) return false;
+      const evTeacher = norm(ev.teacherUsername || ev.closedBy);
+      if (myTeacher && evTeacher && evTeacher !== myTeacher) {
+        return false;
+      }
+      // If student didn't enter via a specific teacher QR, only auto-submit when teacher matches or global lock matches exam
+      if (!myTeacher && ev.closeAllForTeacher && ev.scope !== 'all_system') {
+        const listCodes = Array.isArray(ev.examCodes) ? ev.examCodes.map(norm) : [];
+        const listIds = Array.isArray(ev.examIds) ? ev.examIds.map(norm) : [];
+        if (listCodes.length === 0 && listIds.length === 0) return false;
+        return listCodes.includes(myExamCode) || listIds.includes(myExamId);
+      }
+      if (ev.closeAllForTeacher || ev.scope === 'all_teacher' || ev.scope === 'all_system') {
+        return true;
+      }
+      const evId = norm(ev.examId);
+      const evCode = norm(ev.examCode);
+      const listCodes = Array.isArray(ev.examCodes) ? ev.examCodes.map(norm) : [];
+      const listIds = Array.isArray(ev.examIds) ? ev.examIds.map(norm) : [];
+      return Boolean(
+        (myExamId &&
+          (evId === myExamId ||
+            evCode === myExamId ||
+            listIds.includes(myExamId) ||
+            listCodes.includes(myExamId))) ||
+          (myExamCode &&
+            (evCode === myExamCode ||
+              evId === myExamCode ||
+              listCodes.includes(myExamCode) ||
+              listIds.includes(myExamCode)))
+      );
+    };
+
+    const unsub = subscribeRealtimeEvent('exam_session_ended', (payload) => {
+      if (hasSubmittedRef.current) return;
+      if (doesEventMatch(payload)) {
+        executeFinalSubmit(undefined, true, true);
+      }
+    });
+
+    // Polling fallback every 4s for devices/WebViews where SSE may pause
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const checkStatus = () => {
+      if (hasSubmittedRef.current) {
+        if (pollTimer) clearInterval(pollTimer);
+        return;
+      }
+      if (!myTeacher) return;
+      const qs = new URLSearchParams({
+        examId: exam.id,
+        code: exam.code,
+        teacher: myTeacher,
+        _t: String(Date.now()),
+      });
+      fetch(`/api/assignments/session-status?${qs.toString()}`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.isClosed === true && !hasSubmittedRef.current) {
+            executeFinalSubmit(undefined, true, true);
+          }
+        })
+        .catch(() => {});
+    };
+
+    if (myTeacher) {
+      pollTimer = setInterval(checkStatus, 4000);
+    }
+
+    return () => {
+      unsub();
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [exam.id, exam.code, assignedTeacherUsername]);
 
   const triggerViolation = (reason: string) => {
     if (hasSubmittedRef.current) return;
