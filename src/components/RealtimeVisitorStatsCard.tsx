@@ -119,10 +119,14 @@ const DOWNLOAD_CATEGORY_LABELS: Record<string, string> = {
 };
 
 const TAB_LABELS: Record<string, string> = {
-  exams: 'Đề Tham Khảo',
+  home: 'Trang Chủ',
+  exams: 'TN.THPT (Đề Tham Khảo · Thi Thử · Chính Thức · Ma Trận)',
   provincial_exams: 'Đề Thi Thử Các Tỉnh',
   official_exams: 'Đề Chính Thức Các Năm',
   provincial_official: 'Đề Thi Thử Tỉnh & Chính Thức Các Năm',
+  grade10: 'Lớp 10 (Công Nghệ Trồng Trọt)',
+  grade11: 'Lớp 11 (Công Nghệ Chăn Nuôi)',
+  grade12: 'Lớp 12 (Lâm Nghiệp & Thủy Sản)',
   chapter_review: 'Tài Nguyên (SGK 10·11·12)',
   mistakes: 'Câu Sai Nhiều',
   admin: 'Bảng Điểm',

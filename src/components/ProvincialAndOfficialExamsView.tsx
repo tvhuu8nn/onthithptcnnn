@@ -990,26 +990,26 @@ export const ProvincialAndOfficialExamsView: React.FC<ProvincialAndOfficialExams
                 {isOfficialTab ? (
                   <>
                     <Award className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Kho Đề Thi Chính Thức Các Năm · Bộ GD&amp;ĐT</span>
+                    <span>TN THPT · Kho Đề Thi Chính Thức Các Năm · Bộ GD&amp;ĐT</span>
                   </>
                 ) : isReferenceTab ? (
                   <>
                     <BookOpen className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Kho Đề Tham Khảo &amp; Tài Liệu Ôn Thi · GDPT 2018</span>
+                    <span>TN THPT · Kho Đề Tham Khảo &amp; Tài Liệu Ôn Thi · GDPT 2018</span>
                   </>
                 ) : (
                   <>
                     <Building2 className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Kho Đề Thi Thử Tốt Nghiệp THPT Các Tỉnh / Sở GD&amp;ĐT · GDPT 2018</span>
+                    <span>TN THPT · Kho Đề Thi Thử Tốt Nghiệp THPT Các Tỉnh / Sở GD&amp;ĐT · GDPT 2018</span>
                   </>
                 )}
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-white leading-tight">
                 {isOfficialTab
-                  ? 'Đề Thi Chính Thức Tốt Nghiệp THPT Các Năm'
+                  ? 'TN THPT – Đề Thi Chính Thức Các Năm'
                   : isReferenceTab
-                  ? 'Đề Tham Khảo & Tài Liệu Ôn Thi Tốt Nghiệp THPT'
-                  : 'Đề Thi Thử Tốt Nghiệp THPT Các Tỉnh / Sở GD&ĐT / Trường THPT'}
+                  ? 'TN THPT – Đề Tham Khảo & Tài Liệu Ôn Thi'
+                  : 'TN THPT – Đề Thi Thử Các Tỉnh / Sở GD&ĐT / Trường THPT'}
               </h1>
               <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
                 {isOfficialTab ? (

@@ -66,12 +66,16 @@ import {
   Award,
   Building2,
   UploadCloud,
+  FileText,
+  GraduationCap,
 } from 'lucide-react';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<
-    'exams' | 'provincial_exams' | 'official_exams' | 'mistakes' | 'admin' | 'users' | 'chapter_review' | 'matrix'
-  >('exams');
+    'home' | 'exams' | 'grade10' | 'grade11' | 'grade12' | 'mistakes' | 'admin' | 'users'
+  >('home');
+  const [tnSubTab, setTnSubTab] = useState<'reference' | 'provincial' | 'official' | 'matrix'>('reference');
+  const [gradeViewMode, setGradeViewMode] = useState<'review' | 'practice'>('review');
   const [examList, setExamList] = useState<Exam[]>(MOCK_EXAMS);
   const canUserAccessUploadedExam = (exam: ExternalExamItem, user: AuthUser | null): boolean => {
     if (!exam) return false;
@@ -1028,6 +1032,7 @@ export default function App() {
     setExamList([...MOCK_EXAMS, ...nextCustomList]);
     setExamCodeFilter(newExam.code);
     setCurrentTab('exams');
+    setTnSubTab('reference');
     setRandomExamAlert(
       `Đã tạo thành công 1 mã đề ngẫu nhiên mới: Mã đề ${newExam.code}.`
     );
@@ -1279,12 +1284,8 @@ export default function App() {
         <Navbar
           currentTab={currentTab}
           onSelectTab={(tab) => {
-            if (tab === 'matrix') {
-              setIsMatrixModalOpen(true);
-            } else {
-              handleExitExam();
-              setCurrentTab(tab);
-            }
+            handleExitExam();
+            setCurrentTab(tab);
           }}
           onGenerateRandomExam={handleGenerateRandomExam}
           onStartExam={() => handleStartExamAttempt()}
@@ -1345,11 +1346,7 @@ export default function App() {
       <Navbar
         currentTab={currentTab}
         onSelectTab={(tab) => {
-          if (tab === 'matrix') {
-            setIsMatrixModalOpen(true);
-          } else {
-            setCurrentTab(tab);
-          }
+          setCurrentTab(tab);
         }}
         onGenerateRandomExam={handleGenerateRandomExam}
         onStartExam={() => handleStartExamAttempt()}
@@ -1538,7 +1535,7 @@ export default function App() {
 
       {/* Main Tab Views */}
       <main className="flex-1">
-        {currentTab === 'exams' && (
+        {currentTab === 'home' && (
           <div className="space-y-10 pb-16">
             {/* Hero & Website Cover Section */}
             <section className="bg-gradient-to-b from-[#145f33] via-emerald-900 to-emerald-950 text-white py-5 sm:py-7 lg:py-8 px-3 sm:px-6 lg:px-8 border-b border-emerald-800">
@@ -1576,7 +1573,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Block B: Thanh công cụ thao tác nhanh (Mobile: hiển thị ngay dưới trang bìa · PC: trải ngang cân đối toàn hàng 2) */}
+                  {/* Block B: Thanh công cụ thao tác nhanh */}
                   <div className="lg:col-span-12 lg:row-start-2 pt-4 border-t border-emerald-700/60">
                     <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
                       <button
@@ -1620,9 +1617,14 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => setReferenceUploadTrigger((c) => c + 1)}
+                        onClick={() => {
+                          setCurrentTab('exams');
+                          setTnSubTab('reference');
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                          window.setTimeout(() => setReferenceUploadTrigger((c) => c + 1), 60);
+                        }}
                         className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-teal-300 hover:bg-teal-200 active:scale-95 transition-all rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer"
-                        title="Giáo viên đăng tài liệu / đề tham khảo (.docx, .pdf, .txt) lên thẻ Đề Tham Khảo"
+                        title="Giáo viên đăng tài liệu / đề tham khảo (.docx, .pdf, .txt) lên thẻ TN.THPT"
                       >
                         <UploadCloud className="w-4 h-4 text-slate-900 shrink-0" />
                         <span>Đăng Tài Liệu Đề Tham Khảo</span>
@@ -1657,7 +1659,11 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => setCurrentTab('provincial_exams')}
+                        onClick={() => {
+                          setCurrentTab('exams');
+                          setTnSubTab('provincial');
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
                         className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-indigo-400 hover:bg-indigo-300 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
                         <Building2 className="w-4 h-4 text-slate-900 shrink-0" />
@@ -1665,7 +1671,11 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => setCurrentTab('official_exams')}
+                        onClick={() => {
+                          setCurrentTab('exams');
+                          setTnSubTab('official');
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
                         className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
                         <Award className="w-4 h-4 text-slate-900 shrink-0" />
@@ -1673,11 +1683,36 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => setCurrentTab('chapter_review')}
+                        onClick={() => {
+                          setCurrentTab('grade10');
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-emerald-950 bg-emerald-300 hover:bg-emerald-200 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <BookOpen className="w-4 h-4 text-emerald-900 shrink-0" />
+                        <span>Lớp 10 (Trồng Trọt)</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setCurrentTab('grade11');
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
                         className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-amber-950 bg-amber-300 hover:bg-amber-200 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
                         <BookOpen className="w-4 h-4 text-amber-900 shrink-0" />
-                        <span>Tài Nguyên (SGK 10·11·12)</span>
+                        <span>Lớp 11 (Chăn Nuôi)</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setCurrentTab('grade12');
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="px-3.5 py-2.5 text-xs sm:text-sm font-bold text-teal-950 bg-teal-300 hover:bg-teal-200 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <BookOpen className="w-4 h-4 text-teal-900 shrink-0" />
+                        <span>Lớp 12 (Lâm Nghiệp &amp; Thủy Sản)</span>
                       </button>
 
                       <button
@@ -1689,7 +1724,11 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => setIsMatrixModalOpen(true)}
+                        onClick={() => {
+                          setCurrentTab('exams');
+                          setTnSubTab('matrix');
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
                         className="px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-emerald-800/80 hover:bg-emerald-800 border border-emerald-700/80 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
                         <Layers className="w-4 h-4 shrink-0" />
@@ -1698,9 +1737,8 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Block C: Góc trên bên phải giao diện chính (PC: 4/12 cạnh trang bìa · Mobile: xếp gọn bên dưới) */}
+                  {/* Block C: Góc trên bên phải giao diện chính */}
                   <div className="lg:col-span-4 lg:col-start-9 lg:row-start-1 flex flex-col justify-between gap-3">
-                    {/* Hộp QR góc nhỏ như mã QR giao bài */}
                     <div
                       onClick={() => setIsSponsorQrModalOpen(true)}
                       className="bg-emerald-950/70 hover:bg-emerald-950/90 backdrop-blur-xs p-3.5 rounded-2xl border border-amber-400/60 shadow-md flex flex-col gap-2.5 cursor-pointer transition-all group"
@@ -1717,7 +1755,6 @@ export default function App() {
                           </p>
                         </div>
 
-                        {/* Mã QR nằm góc nhỏ */}
                         <div className="shrink-0 flex flex-col items-center gap-1">
                           <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-xl p-1 border-2 border-amber-300 shadow-sm overflow-hidden flex items-center justify-center group-hover:scale-105 transition-transform">
                             <img
@@ -1733,7 +1770,6 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Các mức Giáo viên VIP / Học sinh VIP / Trải nghiệm (free) */}
                       <div className="pt-2 border-t border-emerald-800/80 space-y-1 text-[11px]">
                         <div className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-cyan-500/15 border border-cyan-400/30 text-cyan-100">
                           <span className="font-bold text-cyan-200">💎 Giáo viên VIP 200000đ</span>
@@ -1750,7 +1786,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Quick KPI / Overview Box */}
                     <div className="bg-emerald-800/50 backdrop-blur-xs p-4 sm:p-5 rounded-2xl border border-emerald-700/60 space-y-2.5 text-xs flex-1 flex flex-col justify-center">
                       <span className="font-bold uppercase tracking-wider text-emerald-200 block">
                         Cấu Trúc Đề Thi Chuẩn
@@ -1779,52 +1814,406 @@ export default function App() {
               </div>
             </section>
 
-            {/* Exam Matrix Visual Strip */}
+            {/* Quick Navigation Cards for Lớp 10 · Lớp 11 · Lớp 12 · TN.THPT */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center shrink-0 font-bold">
-                      10
-                    </div>
-                    <div>
-                      <strong className="text-slate-900 block">Công nghệ 10 Trồng trọt</strong>
-                      <span className="text-slate-500">4 câu Nhận biết (1,00 điểm)</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentTab('grade10');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="bg-white hover:bg-emerald-50/70 rounded-xl border border-slate-200 hover:border-emerald-300 p-4 shadow-2xs transition-all text-left flex items-start gap-3 cursor-pointer group"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 font-extrabold text-sm group-hover:bg-emerald-700 group-hover:text-white transition-colors">
+                    10
+                  </div>
+                  <div>
+                    <strong className="text-slate-900 block text-sm group-hover:text-emerald-800">
+                      Lớp 10 · Trồng Trọt
+                    </strong>
+                    <span className="text-slate-500">8 chương ôn tập &amp; 40 đề luyện tập</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentTab('grade11');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="bg-white hover:bg-amber-50/70 rounded-xl border border-slate-200 hover:border-amber-300 p-4 shadow-2xs transition-all text-left flex items-start gap-3 cursor-pointer group"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-extrabold text-sm group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                    11
+                  </div>
+                  <div>
+                    <strong className="text-slate-900 block text-sm group-hover:text-amber-800">
+                      Lớp 11 · Chăn Nuôi
+                    </strong>
+                    <span className="text-slate-500">6 chương ôn tập &amp; 30 đề luyện tập</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentTab('grade12');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="bg-white hover:bg-teal-50/70 rounded-xl border border-slate-200 hover:border-teal-300 p-4 shadow-2xs transition-all text-left flex items-start gap-3 cursor-pointer group"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0 font-extrabold text-sm group-hover:bg-teal-700 group-hover:text-white transition-colors">
+                    12
+                  </div>
+                  <div>
+                    <strong className="text-slate-900 block text-sm group-hover:text-teal-800">
+                      Lớp 12 · Lâm Nghiệp &amp; Thủy Sản
+                    </strong>
+                    <span className="text-slate-500">10 chương ôn tập &amp; 40 đề chuẩn 0716</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentTab('exams');
+                    setTnSubTab('reference');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="bg-white hover:bg-sky-50/70 rounded-xl border border-slate-200 hover:border-sky-300 p-4 shadow-2xs transition-all text-left flex items-start gap-3 cursor-pointer group"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-sky-100 text-sky-800 flex items-center justify-center shrink-0 font-extrabold group-hover:bg-sky-700 group-hover:text-white transition-colors">
+                    <GraduationCap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <strong className="text-slate-900 block text-sm group-hover:text-sky-800">
+                      Ôn Thi TN.THPT
+                    </strong>
+                    <span className="text-slate-500">Đề Tham Khảo · Thi Thử · Chính Thức · Ma Trận</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Thẻ Chọn / Nhập Tên Học Sinh và Lớp */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <StudentProfileCard
+                profile={studentProfile}
+                onUpdateProfile={handleUpdateStudentProfile}
+              />
+            </div>
+
+            {/* Danh sách Đề Thi Đã Nhận Qua Mã QR */}
+            {savedQrAssignments.length > 0 && (
+              <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 rounded-2xl p-5 sm:p-6 border-2 border-amber-400/80 shadow-lg text-white space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-700/80 pb-3.5">
+                    <div className="flex items-start sm:items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-amber-400 text-slate-950 shrink-0 shadow-xs">
+                        <QrCode className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-base sm:text-lg font-extrabold text-white">
+                            Đề Thi Đã Giao Qua Mã QR (Giao 1 Lần · Làm Bài Không Giới Hạn Mọi Lúc)
+                          </h2>
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-400/20 border border-amber-300 text-amber-200">
+                            ∞ Làm bài 24/7 không giới hạn số lượt
+                          </span>
+                        </div>
+                        <p className="text-xs text-emerald-100 mt-0.5">
+                          Giáo viên chỉ cần giao đề qua mã QR 1 lần duy nhất — Đề thi đã được lưu cố định để học sinh có thể vào làm bài và ôn luyện lại không giới hạn vào bất cứ thời gian nào.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-800 flex items-center justify-center shrink-0 font-bold">
-                      11
-                    </div>
-                    <div>
-                      <strong className="text-slate-900 block">Công nghệ 11 Chăn nuôi</strong>
-                      <span className="text-slate-500">4 câu Nhận biết (1,00 điểm)</span>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {savedQrAssignments.map((item) => (
+                      <div
+                        key={`home_saved_qr_${item.exam.id}_${item.exam.code}`}
+                        className="bg-white text-slate-900 rounded-xl p-4 border border-emerald-200 shadow-sm flex flex-col justify-between gap-3"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-900 font-mono text-xs font-extrabold border border-emerald-300">
+                              Mã đề {item.exam.code}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200 text-[11px] font-bold">
+                              ∞ Không giới hạn thời gian &amp; số lượt
+                            </span>
+                          </div>
+                          <h3 className="text-sm font-extrabold text-slate-900 line-clamp-2">
+                            {item.exam.title}
+                          </h3>
+                          <div className="text-xs text-slate-600 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span>Thời gian làm bài:</span>
+                              <strong className="text-slate-900">{item.config.durationMinutes || 50} phút</strong>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>Lớp nhận đề:</span>
+                              <strong className="text-emerald-800">{item.config.className || 'Ôn THPT'}</strong>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const shouldShuffle = item.config.shuffleQuestions !== false;
+                              const shouldShuffleOpt = item.config.shuffleOptions !== false;
+                              const prepared = prepareExamForStudent(
+                                item.exam,
+                                shouldShuffle,
+                                createUniqueShuffleSeed(item.exam.id),
+                                shouldShuffleOpt
+                              );
+                              setActiveExamShuffleMeta({
+                                rawExam: item.exam,
+                                shuffleQuestions: shouldShuffle,
+                                shuffleOptions: shouldShuffleOpt,
+                              });
+                              setActiveExam(prepared);
+                              setCustomExamDuration(item.config.durationMinutes || item.exam.durationMinutes || 50);
+                              setActiveTeacherNote(item.config.teacherNote);
+                              setActiveAssignedTeacher({
+                                username: item.config.teacherUsername,
+                                fullName: item.config.teacherName,
+                              });
+                              setStudentEntryConfig(null);
+                              setCurrentStudentInfo({
+                                name: studentProfile.name || '',
+                                studentClass: item.config.className || studentProfile.studentClass || '12A1',
+                                studentId: studentProfile.studentId || '',
+                              });
+                              setUserAnswers(null);
+                              setExamResult(null);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="flex-1 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Vào Làm Bài Ngay</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSavedQrAssignments(removeStudentQrAssignment(item.exam.id));
+                            }}
+                            className="p-2 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Gỡ đề này khỏi danh sách đã lưu trên thiết bị"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                </div>
+              </section>
+            )}
+          </div>
+        )}
 
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-800 flex items-center justify-center shrink-0 font-bold">
-                      12
-                    </div>
-                    <div>
-                      <strong className="text-slate-900 block">Công nghệ 12 Lâm nghiệp</strong>
-                      <span className="text-slate-500">NB, TH, VD + Tình huống thực tế</span>
-                    </div>
-                  </div>
+        {currentTab === 'exams' && (
+          <div className="pb-16">
+            {/* Thanh phân mục trong thẻ TN.THPT: Đề Tham Khảo · Đề Thi Thử · Đề Chính Thức · Ma Trận Đề */}
+            <div className="bg-white border-b border-slate-200 shadow-2xs">
+              <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 text-xs font-extrabold text-emerald-950 uppercase tracking-wide shrink-0">
+                  <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center border border-emerald-200">
+                    <GraduationCap className="w-4 h-4" />
+                  </span>
+                  <span>Ôn Thi TN.THPT</span>
+                </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-800 flex items-center justify-center shrink-0 font-bold">
-                      12
-                    </div>
-                    <div>
-                      <strong className="text-slate-900 block">Công nghệ 12 Thủy sản</strong>
-                      <span className="text-slate-500">NB, TH, VD + Tình huống thực tế</span>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-0.5 sm:pb-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isLoyalMember) {
+                        setIsDownloadRestrictedModalOpen(true);
+                        return;
+                      }
+                      setTnSubTab('reference');
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer border ${
+                      tnSubTab === 'reference'
+                        ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-200'
+                    }`}
+                  >
+                    {isLoyalMember ? (
+                      <Lock className={`w-3.5 h-3.5 shrink-0 ${tnSubTab === 'reference' ? 'text-amber-300' : 'text-amber-600'}`} />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    <span>Đề Tham Khảo</span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-extrabold ${
+                        tnSubTab === 'reference'
+                          ? 'bg-emerald-800 text-emerald-100'
+                          : 'bg-emerald-100 text-emerald-800'
+                      }`}
+                    >
+                      {examList.length + uploadedExams.filter((e) => e.category === 'reference_exam').length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTnSubTab('provincial')}
+                    className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer border ${
+                      tnSubTab === 'provincial'
+                        ? 'bg-teal-700 text-white border-teal-700 shadow-sm'
+                        : 'bg-slate-50 text-teal-900 border-slate-200 hover:bg-teal-50 hover:text-teal-800 hover:border-teal-200'
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>Đề Thi Thử</span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-extrabold ${
+                        tnSubTab === 'provincial'
+                          ? 'bg-teal-800 text-teal-100'
+                          : 'bg-teal-100 text-teal-800'
+                      }`}
+                    >
+                      {
+                        [...BUILTIN_PROVINCIAL_AND_OFFICIAL_EXAMS, ...uploadedExams].filter(
+                          (e) => e.category === 'provincial_mock'
+                        ).length
+                      }
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTnSubTab('official')}
+                    className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer border ${
+                      tnSubTab === 'official'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                        : 'bg-slate-50 text-amber-950 border-slate-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-200'
+                    }`}
+                  >
+                    <Award className="w-3.5 h-3.5 shrink-0" />
+                    <span>Đề Chính Thức</span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-extrabold ${
+                        tnSubTab === 'official'
+                          ? 'bg-amber-700 text-amber-50'
+                          : 'bg-amber-100 text-amber-900'
+                      }`}
+                    >
+                      {
+                        [...BUILTIN_PROVINCIAL_AND_OFFICIAL_EXAMS, ...uploadedExams].filter(
+                          (e) => e.category === 'official_past_year'
+                        ).length
+                      }
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTnSubTab('matrix')}
+                    className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer border ${
+                      tnSubTab === 'matrix'
+                        ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
+                        : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100 hover:text-slate-950 hover:border-slate-300'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span>Ma Trận Đề</span>
+                  </button>
                 </div>
               </div>
             </div>
+
+            {tnSubTab === 'matrix' && (
+              <MatrixGuideModal
+                isOpen={true}
+                inline={true}
+                onClose={() => setTnSubTab('reference')}
+              />
+            )}
+
+            {tnSubTab === 'provincial' && (
+              <ProvincialAndOfficialExamsView
+                key="provincial_exams"
+                fixedCategory="provincial_mock"
+                currentUser={currentUser}
+                uploadedExams={uploadedExams}
+                onUploadExamSuccess={handleUploadExamSuccess}
+                onDeleteUploadedExam={handleDeleteUploadedExam}
+                onStartExam={(exam) => handleStartExamAttempt(exam)}
+                onAssignQr={(exam) => handleAssignQrAttempt(exam)}
+                onPrintExam={(exam) => handleOpenPrint(exam)}
+                canDownloadDocuments={canDownloadDocuments}
+                onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
+                onRequireLogin={handleOpenLoginWithReason}
+              />
+            )}
+
+            {tnSubTab === 'official' && (
+              <ProvincialAndOfficialExamsView
+                key="official_exams"
+                fixedCategory="official_past_year"
+                currentUser={currentUser}
+                uploadedExams={uploadedExams}
+                onUploadExamSuccess={handleUploadExamSuccess}
+                onDeleteUploadedExam={handleDeleteUploadedExam}
+                onStartExam={(exam) => handleStartExamAttempt(exam)}
+                onAssignQr={(exam) => handleAssignQrAttempt(exam)}
+                onPrintExam={(exam) => handleOpenPrint(exam)}
+                canDownloadDocuments={canDownloadDocuments}
+                onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
+                onRequireLogin={handleOpenLoginWithReason}
+              />
+            )}
+
+            {tnSubTab === 'reference' && (
+              <div className="space-y-8 pt-6">
+                {/* Compact Action Strip inside TN.THPT -> Đề Tham Khảo */}
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 rounded-2xl p-4 sm:p-5 text-white shadow-sm border border-emerald-700/60 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <h2 className="text-base sm:text-lg font-extrabold text-white">
+                        Kho Đề Tham Khảo TN.THPT (24 Mã Đề Chuẩn &amp; Đề Giáo Viên Chia Sẻ)
+                      </h2>
+                      <p className="text-xs text-emerald-100">
+                        Chuẩn cấu trúc Bộ GD&amp;ĐT (50 phút · 24 câu Phần I + 4 câu Đúng/Sai Phần II). Hỗ trợ thi trực tuyến, giao QR và tải Word/PDF.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleAssignQrAttempt(currentSelectedExam)}
+                        className="px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <QrCode className="w-3.5 h-3.5 shrink-0" />
+                        <span>Giao Đề QR</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleGenerateRandomExam}
+                        className="px-3.5 py-2 text-xs font-bold text-emerald-950 bg-white hover:bg-emerald-50 rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5 text-emerald-800 shrink-0" />
+                        <span>Tạo 1 Đề Ngẫu Nhiên</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReferenceUploadTrigger((c) => c + 1)}
+                        className="px-3.5 py-2 text-xs font-bold text-slate-950 bg-teal-300 hover:bg-teal-200 rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <UploadCloud className="w-3.5 h-3.5 text-slate-900 shrink-0" />
+                        <span>Đăng Tài Liệu Đề Tham Khảo</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+            {/* (Trang Chủ đã tách thành thẻ riêng bên trên; ở đây giữ nguyên StudentProfileCard & kho đề tham khảo) */}
 
             {/* Thẻ Chọn / Nhập Tên Học Sinh và Lớp */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -2184,6 +2573,8 @@ export default function App() {
                   ))}
               </div>
             </section>
+              </div>
+            )}
           </div>
         )}
 
@@ -2208,42 +2599,13 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'provincial_exams' && (
-          <ProvincialAndOfficialExamsView
-            key="provincial_exams"
-            fixedCategory="provincial_mock"
-            currentUser={currentUser}
-            uploadedExams={uploadedExams}
-            onUploadExamSuccess={handleUploadExamSuccess}
-            onDeleteUploadedExam={handleDeleteUploadedExam}
-            onStartExam={(exam) => handleStartExamAttempt(exam)}
-            onAssignQr={(exam) => handleAssignQrAttempt(exam)}
-            onPrintExam={(exam) => handleOpenPrint(exam)}
-            canDownloadDocuments={canDownloadDocuments}
-            onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
-            onRequireLogin={handleOpenLoginWithReason}
-          />
-        )}
-
-        {currentTab === 'official_exams' && (
-          <ProvincialAndOfficialExamsView
-            key="official_exams"
-            fixedCategory="official_past_year"
-            currentUser={currentUser}
-            uploadedExams={uploadedExams}
-            onUploadExamSuccess={handleUploadExamSuccess}
-            onDeleteUploadedExam={handleDeleteUploadedExam}
-            onStartExam={(exam) => handleStartExamAttempt(exam)}
-            onAssignQr={(exam) => handleAssignQrAttempt(exam)}
-            onPrintExam={(exam) => handleOpenPrint(exam)}
-            canDownloadDocuments={canDownloadDocuments}
-            onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
-            onRequireLogin={handleOpenLoginWithReason}
-          />
-        )}
-
-        {currentTab === 'chapter_review' && (
+        {(currentTab === 'grade10' || currentTab === 'grade11' || currentTab === 'grade12') && (
           <ChapterReviewView
+            activeGrade={
+              currentTab === 'grade10' ? '10' : currentTab === 'grade11' ? '11' : '12'
+            }
+            activeMode={gradeViewMode}
+            onChangeMode={setGradeViewMode}
             currentUser={currentUser}
             canDownloadDocuments={canDownloadDocuments}
             onRequireLogin={handleOpenLoginWithReason}

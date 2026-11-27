@@ -26,19 +26,20 @@ import {
   Building2,
   Trash2,
   AlertTriangle,
+  Home,
 } from 'lucide-react';
 import { AuthUser } from '../types/auth';
 import { authService, getAccountSubscriptionStatus } from '../services/authService';
 
 export type AppNavTab =
+  | 'home'
   | 'exams'
-  | 'provincial_exams'
-  | 'official_exams'
+  | 'grade10'
+  | 'grade11'
+  | 'grade12'
   | 'mistakes'
   | 'admin'
-  | 'users'
-  | 'chapter_review'
-  | 'matrix';
+  | 'users';
 
 interface NavbarProps {
   currentTab: AppNavTab;
@@ -245,7 +246,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center justify-between gap-4 h-16">
           {/* Zone 1: Wordmark */}
           <button
-            onClick={() => onSelectTab('exams')}
+            onClick={() => onSelectTab('home')}
             className="flex items-center gap-2.5 text-left focus:outline-none group shrink-0 cursor-pointer"
           >
             <div className="w-9 h-9 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-lg shadow-sm">
@@ -262,63 +263,66 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Zone 2: Navigation links */}
-          <nav className="hidden lg:flex items-center gap-3.5 xl:gap-5 text-sm font-medium text-slate-600 shrink-0">
+          <nav className="hidden lg:flex items-center gap-3 xl:gap-4 text-sm font-medium text-slate-600 shrink-0">
             <button
-              onClick={() => {
-                if (isLoyalMember && onRequireVipUpgrade) {
-                  onRequireVipUpgrade();
-                  return;
-                }
-                onSelectTab('exams');
-              }}
+              onClick={() => onSelectTab('home')}
               className={`hover:text-emerald-700 transition-colors whitespace-nowrap shrink-0 pb-0.5 cursor-pointer flex items-center gap-1 ${
-                currentTab === 'exams'
-                  ? 'text-emerald-700 font-semibold border-b-2 border-emerald-600'
-                  : ''
+                currentTab === 'home'
+                  ? 'text-emerald-700 font-bold border-b-2 border-emerald-600'
+                  : 'text-emerald-950 font-semibold'
               }`}
-              title={
-                isLoyalMember
-                  ? 'Gói Giáo viên (50.000đ) đầy đủ tính năng 15 ngày đầu; từ ngày thứ 16 khóa Kho đề và không được tải tài liệu (Cần nâng cấp Giáo viên VIP)'
-                  : 'Đề Tham Khảo'
-              }
+              title="Trang Chủ – Tổng quan hệ thống ôn tập & luyện đề"
             >
-              {isLoyalMember && <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
-              <span>Đề Tham Khảo</span>
+              <Home className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span>Trang Chủ</span>
             </button>
             <button
-              onClick={() => onSelectTab('provincial_exams')}
-              className={`hover:text-teal-700 transition-colors whitespace-nowrap shrink-0 pb-0.5 cursor-pointer flex items-center gap-1 ${
-                currentTab === 'provincial_exams'
-                  ? 'text-teal-700 font-semibold border-b-2 border-teal-600'
-                  : 'text-teal-900 font-medium'
-              }`}
-              title="Kho Đề thi thử các Tỉnh / Sở GD&ĐT / Trường THPT (Giáo viên được quyền đăng đề)"
-            >
-              <Building2 className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-              <span>Đề Thi Thử Tỉnh</span>
-            </button>
-            <button
-              onClick={() => onSelectTab('official_exams')}
-              className={`hover:text-amber-700 transition-colors whitespace-nowrap shrink-0 pb-0.5 cursor-pointer flex items-center gap-1 ${
-                currentTab === 'official_exams'
-                  ? 'text-amber-700 font-semibold border-b-2 border-amber-600'
-                  : 'text-amber-900 font-medium'
-              }`}
-              title="Kho Đề thi chính thức các năm của Bộ GD&ĐT (Chỉ Admin được đăng đề)"
-            >
-              <Award className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span>Đề Chính Thức</span>
-            </button>
-            <button
-              onClick={() => onSelectTab('chapter_review')}
+              onClick={() => onSelectTab('grade10')}
               className={`hover:text-emerald-700 transition-colors whitespace-nowrap shrink-0 pb-0.5 cursor-pointer flex items-center gap-1 ${
-                currentTab === 'chapter_review'
-                  ? 'text-emerald-700 font-semibold border-b-2 border-emerald-600'
+                currentTab === 'grade10'
+                  ? 'text-emerald-700 font-bold border-b-2 border-emerald-600'
                   : 'text-emerald-900 font-medium'
               }`}
+              title="Lớp 10 – Công Nghệ Trồng Trọt (Ôn tập chương & Luyện đề)"
             >
-              <BookOpen className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Tài Nguyên</span>
+              <BookOpen className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span>Lớp 10</span>
+            </button>
+            <button
+              onClick={() => onSelectTab('grade11')}
+              className={`hover:text-amber-700 transition-colors whitespace-nowrap shrink-0 pb-0.5 cursor-pointer flex items-center gap-1 ${
+                currentTab === 'grade11'
+                  ? 'text-amber-700 font-bold border-b-2 border-amber-600'
+                  : 'text-amber-900 font-medium'
+              }`}
+              title="Lớp 11 – Công Nghệ Chăn Nuôi (Ôn tập chương & Luyện đề)"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span>Lớp 11</span>
+            </button>
+            <button
+              onClick={() => onSelectTab('grade12')}
+              className={`hover:text-teal-700 transition-colors whitespace-nowrap shrink-0 pb-0.5 cursor-pointer flex items-center gap-1 ${
+                currentTab === 'grade12'
+                  ? 'text-teal-700 font-bold border-b-2 border-teal-600'
+                  : 'text-teal-900 font-medium'
+              }`}
+              title="Lớp 12 – Công Nghệ Lâm Nghiệp & Thủy Sản (Ôn tập chương & Luyện đề)"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+              <span>Lớp 12</span>
+            </button>
+            <button
+              onClick={() => onSelectTab('exams')}
+              className={`hover:text-emerald-700 transition-colors whitespace-nowrap shrink-0 pb-0.5 cursor-pointer flex items-center gap-1.5 ${
+                currentTab === 'exams'
+                  ? 'text-emerald-700 font-bold border-b-2 border-emerald-600'
+                  : 'text-emerald-950 font-semibold'
+              }`}
+              title="TN.THPT: Đề Tham Khảo, Đề Thi Thử Tỉnh, Đề Chính Thức & Ma Trận Đề"
+            >
+              <GraduationCap className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span>TN.THPT</span>
             </button>
             <button
               onClick={() => onSelectTab('mistakes')}
@@ -353,16 +357,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span>Quản Lý Người Dùng</span>
               </button>
             )}
-            <button
-              onClick={() => onSelectTab('matrix')}
-              className={`hover:text-emerald-700 transition-colors whitespace-nowrap shrink-0 pb-0.5 cursor-pointer ${
-                currentTab === 'matrix'
-                  ? 'text-emerald-700 font-semibold border-b-2 border-emerald-600'
-                  : ''
-              }`}
-            >
-              Ma Trận Đề
-            </button>
           </nav>
 
           {/* Zone 3: Primary actions & User Auth */}
@@ -978,51 +972,56 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Mobile Navigation bar */}
         <div className="flex lg:hidden items-center justify-around py-2 border-t border-slate-100 text-xs overflow-x-auto gap-2">
           <button
-            onClick={() => {
-              if (isLoyalMember && onRequireVipUpgrade) {
-                onRequireVipUpgrade();
-                return;
-              }
-              onSelectTab('exams');
-            }}
+            onClick={() => onSelectTab('home')}
             className={`py-1 px-2 whitespace-nowrap flex items-center gap-1 ${
-              currentTab === 'exams' ? 'text-emerald-700 font-bold border-b border-emerald-600' : 'text-slate-600'
+              currentTab === 'home'
+                ? 'text-emerald-700 font-bold border-b border-emerald-600'
+                : 'text-emerald-950 font-semibold'
             }`}
           >
-            {isLoyalMember && <Lock className="w-3 h-3 text-amber-600 shrink-0" />}
-            <span>Đề Tham Khảo</span>
+            <Home className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+            <span>Trang Chủ</span>
           </button>
           <button
-            onClick={() => onSelectTab('provincial_exams')}
+            onClick={() => onSelectTab('grade10')}
             className={`py-1 px-2 whitespace-nowrap flex items-center gap-1 ${
-              currentTab === 'provincial_exams'
-                ? 'text-teal-700 font-bold border-b border-teal-600'
-                : 'text-teal-900 font-medium'
-            }`}
-          >
-            <Building2 className="w-3 h-3 text-teal-600 shrink-0" />
-            <span>Đề Thi Thử Tỉnh</span>
-          </button>
-          <button
-            onClick={() => onSelectTab('official_exams')}
-            className={`py-1 px-2 whitespace-nowrap flex items-center gap-1 ${
-              currentTab === 'official_exams'
-                ? 'text-amber-700 font-bold border-b border-amber-600'
-                : 'text-amber-900 font-medium'
-            }`}
-          >
-            <Award className="w-3 h-3 text-amber-600 shrink-0" />
-            <span>Đề Chính Thức</span>
-          </button>
-          <button
-            onClick={() => onSelectTab('chapter_review')}
-            className={`py-1 px-2 whitespace-nowrap ${
-              currentTab === 'chapter_review'
+              currentTab === 'grade10'
                 ? 'text-emerald-700 font-bold border-b border-emerald-600'
                 : 'text-emerald-900 font-medium'
             }`}
           >
-            Tài Nguyên
+            <span>Lớp 10</span>
+          </button>
+          <button
+            onClick={() => onSelectTab('grade11')}
+            className={`py-1 px-2 whitespace-nowrap flex items-center gap-1 ${
+              currentTab === 'grade11'
+                ? 'text-amber-700 font-bold border-b border-amber-600'
+                : 'text-amber-900 font-medium'
+            }`}
+          >
+            <span>Lớp 11</span>
+          </button>
+          <button
+            onClick={() => onSelectTab('grade12')}
+            className={`py-1 px-2 whitespace-nowrap flex items-center gap-1 ${
+              currentTab === 'grade12'
+                ? 'text-teal-700 font-bold border-b border-teal-600'
+                : 'text-teal-900 font-medium'
+            }`}
+          >
+            <span>Lớp 12</span>
+          </button>
+          <button
+            onClick={() => onSelectTab('exams')}
+            className={`py-1 px-2 whitespace-nowrap flex items-center gap-1 ${
+              currentTab === 'exams'
+                ? 'text-emerald-700 font-bold border-b border-emerald-600'
+                : 'text-emerald-950 font-semibold'
+            }`}
+          >
+            <GraduationCap className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+            <span>TN.THPT</span>
           </button>
           <button
             onClick={() => onSelectTab('mistakes')}
@@ -1050,14 +1049,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               Người Dùng
             </button>
           )}
-          <button
-            onClick={() => onSelectTab('matrix')}
-            className={`py-1 px-2 whitespace-nowrap ${
-              currentTab === 'matrix' ? 'text-emerald-700 font-bold border-b border-emerald-600' : 'text-slate-600'
-            }`}
-          >
-            Ma Trận
-          </button>
         </div>
       </div>
     </header>

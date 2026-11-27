@@ -4,38 +4,47 @@ import { X, Layers } from 'lucide-react';
 interface MatrixGuideModalProps {
   isOpen: boolean;
   onClose: () => void;
+  inline?: boolean;
 }
 
 export const MatrixGuideModal: React.FC<MatrixGuideModalProps> = ({
   isOpen,
   onClose,
+  inline = false,
 }) => {
-  if (!isOpen) return null;
+  if (!inline && !isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-3xl w-full p-6 sm:p-8 shadow-xl border border-slate-200 my-8">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center">
-              <Layers className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Ma Trận & Thang Điểm Đề Thi Tốt Nghiệp THPT
-              </h2>
-              <p className="text-xs text-slate-500">
-                Môn Công nghệ (Định hướng Nông nghiệp) · Chương trình GDPT 2018 (SGK Kết nối tri thức)
-              </p>
-            </div>
+  const cardContent = (
+    <div
+      className={
+        inline
+          ? 'bg-white rounded-2xl w-full p-5 sm:p-8 shadow-sm border border-slate-200'
+          : 'bg-white rounded-2xl max-w-3xl w-full p-6 sm:p-8 shadow-xl border border-slate-200 my-8'
+      }
+    >
+      <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center shrink-0">
+            <Layers className="w-4 h-4" />
           </div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">
+              Ma Trận & Thang Điểm Đề Thi Tốt Nghiệp THPT
+            </h2>
+            <p className="text-xs text-slate-500">
+              Môn Công nghệ (Định hướng Nông nghiệp) · Chương trình GDPT 2018 (SGK Kết nối tri thức)
+            </p>
+          </div>
+        </div>
+        {!inline && (
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
-        </div>
+        )}
+      </div>
 
         <div className="space-y-6 text-xs sm:text-sm text-slate-700">
           {/* Section 1: Overview */}
@@ -127,15 +136,30 @@ export const MatrixGuideModal: React.FC<MatrixGuideModalProps> = ({
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-          >
-            Đã hiểu ma trận
-          </button>
-        </div>
-      </div>
+        {!inline && (
+          <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            >
+              Đã hiểu ma trận
+            </button>
+          </div>
+        )}
+    </div>
+  );
+
+  if (inline) {
+    return (
+      <section className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {cardContent}
+      </section>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs overflow-y-auto">
+      {cardContent}
     </div>
   );
 };
