@@ -10,6 +10,7 @@ interface ExamCardProps {
   isGuest?: boolean;
   canDownload?: boolean;
   canUseExamCard?: boolean;
+  requireLoginForExam?: boolean;
 }
 
 export const ExamCard: React.FC<ExamCardProps> = ({
@@ -20,8 +21,10 @@ export const ExamCard: React.FC<ExamCardProps> = ({
   isGuest = false,
   canDownload = true,
   canUseExamCard = true,
+  requireLoginForExam = false,
 }) => {
   const isLockedCard = !canUseExamCard;
+  const isStartLocked = isLockedCard || (isGuest && requireLoginForExam);
 
   return (
     <div
@@ -124,20 +127,22 @@ export const ExamCard: React.FC<ExamCardProps> = ({
         <button
           onClick={() => onStartExam(exam)}
           className={`px-3.5 py-1.5 text-xs font-bold active:scale-95 transition-all rounded-lg flex items-center gap-1.5 shadow-2xs group-hover:shadow-sm cursor-pointer ${
-            isLockedCard
+            isStartLocked
               ? 'text-amber-950 bg-amber-200 hover:bg-amber-300 border border-amber-400'
               : 'text-white bg-emerald-700 hover:bg-emerald-800'
           }`}
           title={
-            isLockedCard
+            isGuest && requireLoginForExam
+              ? 'Vui lòng đăng nhập tài khoản để mở khóa tính năng làm bài trong thẻ TN.THPT'
+              : isLockedCard
               ? 'Tài khoản cần nâng cấp VIP để tiếp tục sử dụng Kho đề'
               : 'Vào phòng thi làm bài (Không giới hạn số lượt làm bài)'
           }
         >
-          {isLockedCard ? (
+          {isStartLocked ? (
             <>
               <Lock className="w-3.5 h-3.5 text-amber-800" />
-              <span>Làm Bài</span>
+              <span>{isGuest && requireLoginForExam ? 'Đăng nhập để làm bài' : 'Làm Bài'}</span>
             </>
           ) : (
             <>

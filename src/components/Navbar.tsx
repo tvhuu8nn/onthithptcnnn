@@ -404,17 +404,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onStartExam}
                 className={`hidden sm:flex px-3.5 py-1.5 text-xs font-semibold rounded-lg shadow-sm transition-all items-center gap-1.5 whitespace-nowrap shrink-0 active:scale-95 cursor-pointer ${
-                  isLoyalMember
+                  !currentUser || isLoyalMember
                     ? 'text-amber-950 bg-amber-200 hover:bg-amber-300 border border-amber-400'
                     : 'text-white bg-emerald-700 hover:bg-emerald-800'
                 }`}
                 title={
-                  isLoyalMember
+                  !currentUser
+                    ? 'Vui lòng đăng nhập tài khoản để mở khóa tính năng làm bài thi TN.THPT'
+                    : isLoyalMember
                     ? 'Tài khoản cần nâng cấp VIP để tiếp tục sử dụng Kho đề'
                     : 'Vào làm bài thi trực tuyến'
                 }
               >
-                {isLoyalMember ? (
+                {!currentUser || isLoyalMember ? (
                   <Lock className="w-3.5 h-3.5 text-amber-800" />
                 ) : (
                   <FileText className="w-3.5 h-3.5" />

@@ -1083,7 +1083,13 @@ export default function App() {
     setAssignQrExam(exam);
   };
 
-  const handleStartExamAttempt = (targetExam?: Exam) => {
+  const handleStartExamAttempt = (targetExam?: Exam, requireLogin = false) => {
+    if (requireLogin && !currentUser) {
+      handleOpenLoginWithReason(
+        'Tính năng làm bài trong thẻ TN.THPT yêu cầu đăng nhập! Vui lòng đăng nhập tài khoản để vào phòng thi.'
+      );
+      return;
+    }
     if (isLoyalMember) {
       setIsDownloadRestrictedModalOpen(true);
       return;
@@ -1288,7 +1294,7 @@ export default function App() {
             setCurrentTab(tab);
           }}
           onGenerateRandomExam={handleGenerateRandomExam}
-          onStartExam={() => handleStartExamAttempt()}
+          onStartExam={() => handleStartExamAttempt(undefined, true)}
           currentUser={currentUser}
           onUpdateUser={(updated) => setCurrentUser(updated)}
           isLoyalMember={isLoyalMember}
@@ -1349,7 +1355,7 @@ export default function App() {
           setCurrentTab(tab);
         }}
         onGenerateRandomExam={handleGenerateRandomExam}
-        onStartExam={() => handleStartExamAttempt()}
+        onStartExam={() => handleStartExamAttempt(undefined, true)}
         currentUser={currentUser}
         onUpdateUser={(updated) => setCurrentUser(updated)}
         isLoyalMember={isLoyalMember}
@@ -2130,6 +2136,38 @@ export default function App() {
               </div>
             </div>
 
+            {!currentUser && (
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5">
+                <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-start sm:items-center gap-3">
+                    <div className="p-2 rounded-xl bg-amber-200 text-amber-900 shrink-0">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div className="text-xs sm:text-sm text-amber-950">
+                      <p className="font-extrabold">
+                        Tính năng làm bài trong thẻ TN.THPT đang bị khóa khi chưa đăng nhập
+                      </p>
+                      <p className="text-xs text-amber-800 mt-0.5">
+                        Bạn vẫn có thể xem danh sách đề và Ma Trận Đề. Vui lòng <strong>đăng nhập tài khoản</strong> để mở khóa nút <strong>Làm Bài</strong> tại các mục Đề Tham Khảo, Đề Thi Thử và Đề Chính Thức.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleOpenLoginWithReason(
+                        'Tính năng làm bài trong thẻ TN.THPT yêu cầu đăng nhập! Vui lòng đăng nhập tài khoản để vào phòng thi.'
+                      )
+                    }
+                    className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 self-start sm:self-center cursor-pointer shadow-xs active:scale-95 transition-all"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Đăng Nhập Để Làm Bài</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {tnSubTab === 'matrix' && (
               <MatrixGuideModal
                 isOpen={true}
@@ -2146,12 +2184,13 @@ export default function App() {
                 uploadedExams={uploadedExams}
                 onUploadExamSuccess={handleUploadExamSuccess}
                 onDeleteUploadedExam={handleDeleteUploadedExam}
-                onStartExam={(exam) => handleStartExamAttempt(exam)}
+                onStartExam={(exam) => handleStartExamAttempt(exam, true)}
                 onAssignQr={(exam) => handleAssignQrAttempt(exam)}
                 onPrintExam={(exam) => handleOpenPrint(exam)}
                 canDownloadDocuments={canDownloadDocuments}
                 onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
                 onRequireLogin={handleOpenLoginWithReason}
+                requireLoginForStartExam={true}
               />
             )}
 
@@ -2163,12 +2202,13 @@ export default function App() {
                 uploadedExams={uploadedExams}
                 onUploadExamSuccess={handleUploadExamSuccess}
                 onDeleteUploadedExam={handleDeleteUploadedExam}
-                onStartExam={(exam) => handleStartExamAttempt(exam)}
+                onStartExam={(exam) => handleStartExamAttempt(exam, true)}
                 onAssignQr={(exam) => handleAssignQrAttempt(exam)}
                 onPrintExam={(exam) => handleOpenPrint(exam)}
                 canDownloadDocuments={canDownloadDocuments}
                 onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
                 onRequireLogin={handleOpenLoginWithReason}
+                requireLoginForStartExam={true}
               />
             )}
 
@@ -2362,12 +2402,13 @@ export default function App() {
               uploadedExams={uploadedExams}
               onUploadExamSuccess={handleUploadExamSuccess}
               onDeleteUploadedExam={handleDeleteUploadedExam}
-              onStartExam={(exam) => handleStartExamAttempt(exam)}
+              onStartExam={(exam) => handleStartExamAttempt(exam, true)}
               onAssignQr={(exam) => handleAssignQrAttempt(exam)}
               onPrintExam={(exam) => handleOpenPrint(exam)}
               canDownloadDocuments={canDownloadDocuments}
               onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
               onRequireLogin={handleOpenLoginWithReason}
+              requireLoginForStartExam={true}
             />
 
             {/* Standard Exams Library */}
@@ -2563,12 +2604,13 @@ export default function App() {
                     <ExamCard
                       key={exam.id}
                       exam={exam}
-                      onStartExam={(e) => handleStartExamAttempt(e)}
+                      onStartExam={(e) => handleStartExamAttempt(e, true)}
                       onAssignQr={(e) => handleAssignQrAttempt(e)}
                       onDownloadExam={(e) => handleOpenPrint(e)}
                       isGuest={!currentUser}
                       canDownload={canDownloadDocuments}
                       canUseExamCard={!isLoyalMember}
+                      requireLoginForExam={true}
                     />
                   ))}
               </div>

@@ -61,6 +61,7 @@ interface ProvincialAndOfficialExamsViewProps {
   onRequireLogin?: (reason?: string) => void;
   embeddedSection?: boolean;
   externalOpenUploadSignal?: number;
+  requireLoginForStartExam?: boolean;
 }
 
 const SAMPLE_PASTE_TEMPLATE = `Câu 1: Phát biểu nào sau đây đúng về vai trò của rừng phòng hộ đầu nguồn?
@@ -162,6 +163,7 @@ export const ProvincialAndOfficialExamsView: React.FC<ProvincialAndOfficialExams
   onRequireLogin,
   embeddedSection = false,
   externalOpenUploadSignal = 0,
+  requireLoginForStartExam = false,
 }) => {
   const isOfficialTab = fixedCategory === 'official_past_year';
   const isReferenceTab = fixedCategory === 'reference_exam';
@@ -1613,11 +1615,28 @@ export const ProvincialAndOfficialExamsView: React.FC<ProvincialAndOfficialExams
                       <>
                         <button
                           onClick={() => onStartExam(exam)}
-                          className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer bg-emerald-700 hover:bg-emerald-800 text-white"
-                          title="Làm bài trực tuyến"
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer ${
+                            !currentUser && requireLoginForStartExam
+                              ? 'bg-amber-200 hover:bg-amber-300 text-amber-950 border border-amber-400'
+                              : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                          }`}
+                          title={
+                            !currentUser && requireLoginForStartExam
+                              ? 'Vui lòng đăng nhập tài khoản để mở khóa tính năng làm bài trong thẻ TN.THPT'
+                              : 'Làm bài trực tuyến'
+                          }
                         >
-                          <Play className="w-3.5 h-3.5 fill-current" />
-                          <span>Làm Bài Ngay</span>
+                          {!currentUser && requireLoginForStartExam ? (
+                            <>
+                              <Lock className="w-3.5 h-3.5 text-amber-800" />
+                              <span>Đăng nhập để làm bài</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3.5 h-3.5 fill-current" />
+                              <span>Làm Bài Ngay</span>
+                            </>
+                          )}
                         </button>
 
                         <button
