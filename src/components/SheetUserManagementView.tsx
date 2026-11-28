@@ -1129,7 +1129,7 @@ export const SheetUserManagementView: React.FC<SheetUserManagementViewProps> = (
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <span className="px-3 py-1.5 rounded-xl bg-white border border-purple-200 text-purple-900 font-bold shadow-2xs flex items-center gap-1.5">
             <CreditCard className="w-3.5 h-3.5 text-purple-600" />
-            <span>Trải nghiệm (free): 7 ngày · Chỉ giới hạn 3 lượt tải tài liệu · Giao bài QR không giới hạn</span>
+            <span>Trải nghiệm (free): 7 ngày · Chỉ 3 lượt tải tài liệu · Không được tải KHBD · Giao bài QR không giới hạn</span>
           </span>
           <span className="px-3 py-1.5 rounded-xl bg-white border border-sky-200 text-sky-900 font-bold shadow-2xs flex items-center gap-1.5">
             <CreditCard className="w-3.5 h-3.5 text-sky-600" />
@@ -1869,7 +1869,7 @@ export const SheetUserManagementView: React.FC<SheetUserManagementViewProps> = (
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1 text-slate-600">
               <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Trải nghiệm (free): 7 ngày (Chỉ giới hạn 3 lượt tải tài liệu · Giao bài QR không giới hạn) · Học sinh VIP: 100.000đ (365 ngày · Không giao bài) · Giáo viên VIP: 200.000đ (365 ngày)</span>
+              <span>Trải nghiệm (free): 7 ngày (Chỉ 3 lượt tải tài liệu · Không được tải KHBD · Giao bài QR không giới hạn) · Học sinh VIP: 100.000đ (365 ngày · Không giao bài) · Giáo viên VIP: 200.000đ (365 ngày)</span>
             </span>
               <span className="flex items-center gap-1 text-slate-600">
                 <KeyRound className="w-3.5 h-3.5 text-emerald-600" />

@@ -16,6 +16,7 @@ import {
   FlaskConical,
   Layers,
   Lightbulb,
+  Lock,
   ShieldCheck,
   Sparkles,
   Target,
@@ -40,8 +41,10 @@ interface KhbdLessonPlanSectionProps {
   allGradeChapters: ChapterReviewItem[];
   currentUser?: AuthUser | null;
   canDownloadDocuments?: boolean;
+  canDownloadKhbd?: boolean;
+  isFreeTrialTier?: boolean;
   onRequireLogin?: (message?: string) => void;
-  onRequireVipUpgrade?: () => void;
+  onRequireVipUpgrade?: (reason?: 'default' | 'khbd_trial_blocked') => void;
 }
 
 interface DigitalCompetencyIndicator {
@@ -1400,9 +1403,12 @@ export const KhbdLessonPlanSection: React.FC<KhbdLessonPlanSectionProps> = ({
   allGradeChapters,
   currentUser,
   canDownloadDocuments = true,
+  canDownloadKhbd = true,
+  isFreeTrialTier = false,
   onRequireLogin,
   onRequireVipUpgrade,
 }) => {
+  const isKhbdDownloadBlockedForTrial = Boolean(currentUser && (isFreeTrialTier || !canDownloadKhbd));
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [downloadedId, setDownloadedId] = useState<string | null>(null);
@@ -1449,8 +1455,12 @@ export const KhbdLessonPlanSection: React.FC<KhbdLessonPlanSectionProps> = ({
       onRequireLogin?.(loginMsg);
       return false;
     }
+    if (isFreeTrialTier || !canDownloadKhbd) {
+      onRequireVipUpgrade?.('khbd_trial_blocked');
+      return false;
+    }
     if (!canDownloadDocuments) {
-      onRequireVipUpgrade?.();
+      onRequireVipUpgrade?.('default');
       return false;
     }
     return true;
@@ -1570,9 +1580,23 @@ export const KhbdLessonPlanSection: React.FC<KhbdLessonPlanSectionProps> = ({
             <button
               type="button"
               onClick={handleDownloadAllGradePlans}
-              className="px-4 py-2.5 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+              title={
+                isKhbdDownloadBlockedForTrial
+                  ? 'Gói Trải nghiệm (free) không được tải KHBD — Nhấn để xem nâng cấp VIP'
+                  : `Tải trọn bộ KHBD Lớp ${activeGrade} (.docx)`
+              }
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer ${
+                isKhbdDownloadBlockedForTrial
+                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                  : 'bg-indigo-700 hover:bg-indigo-800 text-white'
+              }`}
             >
-              {downloadedId === `grade-all-${activeGrade}` ? (
+              {isKhbdDownloadBlockedForTrial ? (
+                <>
+                  <Lock className="w-4 h-4 text-amber-700" />
+                  <span>Tải trọn bộ KHBD Lớp {activeGrade} (VIP)</span>
+                </>
+              ) : downloadedId === `grade-all-${activeGrade}` ? (
                 <>
                   <Check className="w-4 h-4 text-emerald-300" />
                   <span>Đã xuất trọn bộ KHBD Lớp {activeGrade}!</span>
@@ -1586,6 +1610,24 @@ export const KhbdLessonPlanSection: React.FC<KhbdLessonPlanSectionProps> = ({
             </button>
           </div>
         </div>
+
+        {isKhbdDownloadBlockedForTrial && (
+          <div className="rounded-xl bg-amber-50 border border-amber-300 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-amber-950">
+            <div className="flex items-start sm:items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5 sm:mt-0" />
+              <span>
+                <strong>Gói Trải nghiệm (Free · 7 ngày):</strong> Bạn có thể xem trực tuyến toàn bộ KHBD, nhưng <strong>không được tải KHBD (.docx)</strong> (chỉ hỗ trợ tối đa 3 lượt tải tài liệu khác).
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onRequireVipUpgrade?.('khbd_trial_blocked')}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition-colors cursor-pointer"
+            >
+              Nâng cấp VIP
+            </button>
+          </div>
+        )}
 
         {/* Two Reference Framework Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
@@ -1662,9 +1704,23 @@ export const KhbdLessonPlanSection: React.FC<KhbdLessonPlanSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => handleDownloadChapterPlans(chapter, plans)}
-                  className="px-3.5 py-2 rounded-lg bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                  title={
+                    isKhbdDownloadBlockedForTrial
+                      ? 'Gói Trải nghiệm (free) không được tải KHBD — Nhấn để nâng cấp VIP'
+                      : 'Tải KHBD cả chương (.docx)'
+                  }
+                  className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer ${
+                    isKhbdDownloadBlockedForTrial
+                      ? 'bg-amber-400/20 hover:bg-amber-400/30 border border-amber-300/60 text-amber-100'
+                      : 'bg-white/15 hover:bg-white/25 border border-white/25 text-white'
+                  }`}
                 >
-                  {downloadedId === `chapter-${chapter.id}` ? (
+                  {isKhbdDownloadBlockedForTrial ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Tải KHBD cả chương (VIP)</span>
+                    </>
+                  ) : downloadedId === `chapter-${chapter.id}` ? (
                     <>
                       <Check className="w-3.5 h-3.5 text-emerald-300" />
                       <span>Đã tải KHBD cả chương</span>
@@ -1769,9 +1825,23 @@ export const KhbdLessonPlanSection: React.FC<KhbdLessonPlanSectionProps> = ({
                           <button
                             type="button"
                             onClick={() => handleDownloadSinglePlan(plan)}
-                            className="px-3 py-2 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                            title={
+                              isKhbdDownloadBlockedForTrial
+                                ? 'Gói Trải nghiệm (free) không được tải KHBD — Nhấn để nâng cấp VIP'
+                                : 'Tải KHBD dạng Word (.docx)'
+                            }
+                            className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                              isKhbdDownloadBlockedForTrial
+                                ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-700'
+                            }`}
                           >
-                            {downloadedId === plan.id ? (
+                            {isKhbdDownloadBlockedForTrial ? (
+                              <>
+                                <Lock className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Tải Word (VIP)</span>
+                              </>
+                            ) : downloadedId === plan.id ? (
                               <>
                                 <Check className="w-3.5 h-3.5 text-emerald-200" />
                                 <span>Đã tải .docx</span>

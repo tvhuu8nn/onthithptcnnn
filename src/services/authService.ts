@@ -794,7 +794,7 @@ export function getAccountSubscriptionStatus(params: {
     ? Math.max(0, FREE_TRIAL_MAX_DOWNLOADS - freeTrialDownloadsUsed)
     : 999999;
 
-  // Trải nghiệm (free): hạn dùng 7 ngày, chỉ giới hạn tối đa 3 lượt tải tài liệu, giao bài qua mã QR bình thường không giới hạn.
+  // Trải nghiệm (free): hạn dùng 7 ngày, chỉ 3 lượt tải tài liệu, không được tải KHBD, giao bài qua mã QR bình thường không giới hạn.
   // Học sinh VIP (100.000đ): hạn dùng 365 ngày, được làm bài & tải tài liệu nhưng không được giao bài cho thành viên khác.
   // Giáo viên VIP (200.000đ): mở khóa toàn bộ 365 ngày.
   const canTakeExam = isUnlimited || !isExpired;
@@ -804,6 +804,7 @@ export function getAccountSubscriptionStatus(params: {
       (isFreeTrialTier
         ? freeTrialDownloadsRemaining > 0
         : true));
+  const canDownloadKhbd = isUnlimited || (!isExpired && !isFreeTrialTier);
   const canAssignExam =
     isUnlimited ||
     (!isExpired && (isFreeTrialTier || (!isStudentMemberTier && paymentAmount >= 200000)));
@@ -813,6 +814,7 @@ export function getAccountSubscriptionStatus(params: {
     isAdmin,
     canTakeExam,
     canDownloadDocuments,
+    canDownloadKhbd,
     canAssignExam,
     isStudentMemberTier,
     isFreeTrialTier,

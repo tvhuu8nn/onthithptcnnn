@@ -125,13 +125,23 @@ export default function App() {
   const [loginPromptReason, setLoginPromptReason] = useState<string | null>(null);
   const [isSponsorQrModalOpen, setIsSponsorQrModalOpen] = useState(false);
   const [isDownloadRestrictedModalOpen, setIsDownloadRestrictedModalOpen] = useState(false);
+  const [downloadRestrictionReason, setDownloadRestrictionReason] = useState<'default' | 'khbd_trial_blocked'>('default');
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  const openVipUpgradeModal = (reason: 'default' | 'khbd_trial_blocked' = 'default') => {
+    setDownloadRestrictionReason(reason);
+    setIsDownloadRestrictedModalOpen(true);
+  };
 
   // Đồng bộ thời gian thực hạn dùng tài khoản (Tiền nộp, Ngày bắt đầu, Ngày hết hạn) từ Admin
   useEffect(() => {
     const timer = setInterval(() => {
       setNowMs(Date.now());
     }, 1000);
+    const handleTrialDownloadUpdate = () => {
+      setNowMs(Date.now());
+    };
+    window.addEventListener('free_trial_downloads_updated', handleTrialDownloadUpdate);
 
     const syncCurrentUserSubscription = async () => {
       const active = authService.getCurrentUser();
@@ -323,6 +333,7 @@ export default function App() {
 
     return () => {
       clearInterval(timer);
+      window.removeEventListener('free_trial_downloads_updated', handleTrialDownloadUpdate);
       unsubCustomExams();
       unsubUploadedExams();
       unsubMistakes();
@@ -1049,6 +1060,7 @@ export default function App() {
       })
     : null;
   const canDownloadDocuments = currentSubscription ? currentSubscription.canDownloadDocuments : false;
+  const canDownloadKhbd = currentSubscription ? currentSubscription.canDownloadKhbd : false;
   const canAssignExam = currentSubscription ? currentSubscription.canAssignExam : false;
   const isStudentMemberTier = Boolean(currentUser && currentSubscription?.isStudentMemberTier);
   const isFreeTrialTier = Boolean(currentUser && currentSubscription?.isFreeTrialTier);
@@ -1066,7 +1078,7 @@ export default function App() {
       return;
     }
     if (currentSubscription?.isExpired || isLoyalMember) {
-      setIsDownloadRestrictedModalOpen(true);
+      openVipUpgradeModal('default');
       return;
     }
 
@@ -1111,7 +1123,7 @@ export default function App() {
       return;
     }
     if (!canDownloadDocuments) {
-      setIsDownloadRestrictedModalOpen(true);
+      openVipUpgradeModal('default');
       return;
     }
     setPrintExamTarget(exam);
@@ -1124,7 +1136,7 @@ export default function App() {
       return;
     }
     if (!canAssignExam) {
-      setIsDownloadRestrictedModalOpen(true);
+      openVipUpgradeModal('default');
       return;
     }
     setAssignQrExam(exam);
@@ -1138,7 +1150,7 @@ export default function App() {
       return;
     }
     if (isLoyalMember) {
-      setIsDownloadRestrictedModalOpen(true);
+      openVipUpgradeModal('default');
       return;
     }
     const target = targetExam || (examCodeFilter !== 'all' ? examList.find((e) => e.code === examCodeFilter) : null) || examList[0];
@@ -1362,7 +1374,7 @@ export default function App() {
           currentUser={currentUser}
           onUpdateUser={(updated) => setCurrentUser(updated)}
           isLoyalMember={isLoyalMember}
-          onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
+          onRequireVipUpgrade={() => openVipUpgradeModal('default')}
           onOpenLogin={() => setIsLoginModalOpen(true)}
           onLogout={handleLogout}
         />
@@ -1423,7 +1435,7 @@ export default function App() {
         currentUser={currentUser}
         onUpdateUser={(updated) => setCurrentUser(updated)}
         isLoyalMember={isLoyalMember}
-        onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
+        onRequireVipUpgrade={() => openVipUpgradeModal('default')}
         onOpenLogin={() => handleOpenLoginWithReason()}
         onLogout={handleLogout}
         onOpenSponsorQr={() => setIsSponsorQrModalOpen(true)}
@@ -1566,7 +1578,7 @@ export default function App() {
                           : 'bg-rose-500/20 text-rose-200 border border-rose-400/50'
                       }`}
                     >
-                      🎁 Trải nghiệm (free · 7 ngày) · Chỉ giới hạn 3 lượt tải tài liệu ({sub.freeTrialDownloadsUsed}/{sub.maxFreeTrialDownloads} lượt · Còn {sub.freeTrialDownloadsRemaining}) · Giao bài QR không giới hạn
+                      🎁 Trải nghiệm (free · 7 ngày) · Chỉ 3 lượt tải tài liệu ({sub.freeTrialDownloadsUsed}/{sub.maxFreeTrialDownloads} lượt · Còn {sub.freeTrialDownloadsRemaining}) · Không được tải KHBD · Giao bài QR không giới hạn
                     </span>
                   </>
                 )}
@@ -1851,7 +1863,7 @@ export default function App() {
                         </div>
                         <div className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-purple-500/15 border border-purple-400/30 text-purple-100">
                           <span className="font-bold text-purple-200">🎁 Trải nghiệm (free)</span>
-                          <span className="font-mono font-semibold text-white">Hạn 7 ngày · Chỉ giới hạn 3 lượt tải tài liệu · Giao bài QR không giới hạn</span>
+                          <span className="font-mono font-semibold text-white">Hạn 7 ngày · Chỉ 3 lượt tải tài liệu · Không được tải KHBD</span>
                         </div>
                       </div>
                     </div>
@@ -2104,7 +2116,7 @@ export default function App() {
                     type="button"
                     onClick={() => {
                       if (isLoyalMember) {
-                        setIsDownloadRestrictedModalOpen(true);
+                        openVipUpgradeModal('default');
                         return;
                       }
                       setTnSubTab('reference');
@@ -2252,7 +2264,7 @@ export default function App() {
                 onAssignQr={(exam) => handleAssignQrAttempt(exam)}
                 onPrintExam={(exam) => handleOpenPrint(exam)}
                 canDownloadDocuments={canDownloadDocuments}
-                onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
+                onRequireVipUpgrade={() => openVipUpgradeModal('default')}
                 onRequireLogin={handleOpenLoginWithReason}
                 requireLoginForStartExam={true}
               />
@@ -2270,7 +2282,7 @@ export default function App() {
                 onAssignQr={(exam) => handleAssignQrAttempt(exam)}
                 onPrintExam={(exam) => handleOpenPrint(exam)}
                 canDownloadDocuments={canDownloadDocuments}
-                onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
+                onRequireVipUpgrade={() => openVipUpgradeModal('default')}
                 onRequireLogin={handleOpenLoginWithReason}
                 requireLoginForStartExam={true}
               />
@@ -2470,7 +2482,7 @@ export default function App() {
               onAssignQr={(exam) => handleAssignQrAttempt(exam)}
               onPrintExam={(exam) => handleOpenPrint(exam)}
               canDownloadDocuments={canDownloadDocuments}
-              onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
+              onRequireVipUpgrade={() => openVipUpgradeModal('default')}
               onRequireLogin={handleOpenLoginWithReason}
               requireLoginForStartExam={true}
             />
@@ -2508,7 +2520,7 @@ export default function App() {
                       value={examCodeFilter}
                       onChange={(e) => {
                         if (isLoyalMember) {
-                          setIsDownloadRestrictedModalOpen(true);
+                          openVipUpgradeModal('default');
                           return;
                         }
                         setExamCodeFilter(e.target.value);
@@ -2572,7 +2584,7 @@ export default function App() {
                     key={rng.id}
                     onClick={() => {
                       if (isLoyalMember) {
-                        setIsDownloadRestrictedModalOpen(true);
+                        openVipUpgradeModal('default');
                         return;
                       }
                       setCodeRange(rng.id as any);
@@ -2714,8 +2726,10 @@ export default function App() {
             onChangeMode={setGradeViewMode}
             currentUser={currentUser}
             canDownloadDocuments={canDownloadDocuments}
+            canDownloadKhbd={canDownloadKhbd}
+            isFreeTrialTier={isFreeTrialTier}
             onRequireLogin={handleOpenLoginWithReason}
-            onRequireVipUpgrade={() => setIsDownloadRestrictedModalOpen(true)}
+            onRequireVipUpgrade={(reason) => openVipUpgradeModal(reason || 'default')}
             onStartExam={(exam) => handleStartExamAttempt(exam)}
             onAssignQr={(exam) => handleAssignQrAttempt(exam)}
             onPrintExam={(exam) => handleOpenPrint(exam)}
@@ -2812,6 +2826,11 @@ export default function App() {
         onClose={() => setIsPrintModalOpen(false)}
         exam={printExamTarget}
         studentProfile={studentProfile}
+        canDownloadDocuments={canDownloadDocuments}
+        onRequireVipUpgrade={() => {
+          setIsPrintModalOpen(false);
+          openVipUpgradeModal('default');
+        }}
       />
 
       {/* Login Modal */}
@@ -2867,7 +2886,7 @@ export default function App() {
               </div>
               <div className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-purple-50 border border-purple-200 text-purple-950 font-bold shadow-2xs">
                 <span>🎁 Trải nghiệm (free)</span>
-                <span className="font-mono text-purple-800 text-right">Hạn 7 ngày · Chỉ giới hạn 3 lượt tải tài liệu · Giao bài QR không giới hạn</span>
+                <span className="font-mono text-purple-800 text-right">Hạn 7 ngày · Chỉ 3 lượt tải tài liệu · Không được tải KHBD</span>
               </div>
             </div>
 
@@ -2914,16 +2933,22 @@ export default function App() {
                 <Lock className="w-6 h-6" />
               </div>
               <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
-                {isFreeTrialTier
-                  ? 'Gói Trải Nghiệm (Free · 7 Ngày): Đã Tải Đủ 3 File Tài Liệu'
+                {isFreeTrialTier && downloadRestrictionReason === 'khbd_trial_blocked'
+                  ? 'Gói Trải Nghiệm (Free · 7 Ngày): Không Được Tải KHBD'
+                  : isFreeTrialTier
+                  ? 'Gói Trải Nghiệm (Free · 7 Ngày): Đã Hết 3 Lượt Tải Tài Liệu'
                   : isStudentMemberTier
                   ? 'Gói Học Sinh VIP (100.000đ): Không Được Giao Bài Cho Thành Viên Khác'
                   : 'Từ Ngày Thứ 16: Đã Khóa Kho Đề Và Không Được Tải Tài Liệu'}
               </h3>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                {isFreeTrialTier ? (
+                {isFreeTrialTier && downloadRestrictionReason === 'khbd_trial_blocked' ? (
                   <>
-                    Tài khoản của bạn thuộc gói <strong>Trải nghiệm (free · hạn dùng 7 ngày)</strong>: được <strong>giao bài qua mã QR bình thường không giới hạn</strong>, chỉ giới hạn <strong>tối đa 3 lượt tải tài liệu</strong>. Vui lòng nâng cấp gói <strong>Học sinh VIP (100.000đ · hạn dùng 365 ngày)</strong> hoặc <strong>Giáo viên VIP (200.000đ · hạn dùng 365 ngày)</strong> để tải tài liệu không giới hạn.
+                    Tài khoản của bạn thuộc gói <strong>Trải nghiệm (free · hạn dùng 7 ngày)</strong>: chỉ hỗ trợ <strong>tối đa 3 lượt tải tài liệu</strong> và <strong>không được tải Kế hoạch bài dạy (KHBD)</strong>. Bạn vẫn có thể xem trực tuyến toàn bộ KHBD; vui lòng nâng cấp gói <strong>Giáo viên VIP (200.000đ · hạn dùng 365 ngày)</strong> để tải trọn bộ KHBD (.docx) và tải tài liệu không giới hạn.
+                  </>
+                ) : isFreeTrialTier ? (
+                  <>
+                    Tài khoản của bạn thuộc gói <strong>Trải nghiệm (free · hạn dùng 7 ngày)</strong>: chỉ hỗ trợ <strong>3 lượt tải tài liệu</strong> và <strong>không được tải KHBD</strong> (giao bài qua mã QR không giới hạn). Vui lòng nâng cấp gói <strong>Học sinh VIP (100.000đ · hạn dùng 365 ngày)</strong> hoặc <strong>Giáo viên VIP (200.000đ · hạn dùng 365 ngày)</strong> để tải tài liệu và KHBD không giới hạn.
                   </>
                 ) : isStudentMemberTier ? (
                   <>
@@ -2943,7 +2968,7 @@ export default function App() {
                 <span className="font-mono text-cyan-800">Hạn dùng 365 ngày</span>
               </div>
               <p className="text-[11px] text-cyan-800">
-                Mở khóa toàn bộ <strong>Kho đề (24 mã đề chuẩn hóa)</strong>, tính năng <strong>Tạo 1 đề thi ngẫu nhiên mới</strong>, <strong>Giao đề qua Mã QR</strong>, tải đề thi chuẩn hóa Word (.docx), xuất/in PDF và tải trọn bộ đề cương 24 chương SGK Lớp 10 · 11 · 12 suốt 365 ngày.
+                Mở khóa toàn bộ <strong>Kho đề (24 mã đề chuẩn hóa)</strong>, tải trọn bộ <strong>KHBD chuẩn CV 5512 – NLS 3456 – AI 2422 (.docx)</strong>, tính năng <strong>Tạo 1 đề thi ngẫu nhiên mới</strong>, <strong>Giao đề qua Mã QR</strong>, tải đề thi chuẩn hóa Word (.docx), xuất/in PDF và tải trọn bộ đề cương 24 chương SGK Lớp 10 · 11 · 12 suốt 365 ngày.
               </p>
             </div>
 

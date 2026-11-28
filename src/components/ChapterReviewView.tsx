@@ -112,8 +112,10 @@ interface ChapterReviewViewProps {
   currentUser?: AuthUser | null;
   canTakeExam?: boolean;
   canDownloadDocuments?: boolean;
+  canDownloadKhbd?: boolean;
+  isFreeTrialTier?: boolean;
   onRequireLogin?: (reason?: string) => void;
-  onRequireVipUpgrade?: () => void;
+  onRequireVipUpgrade?: (reason?: 'default' | 'khbd_trial_blocked') => void;
   onStartExam?: (exam: Exam) => void;
   onAssignQr?: (exam: Exam) => void;
   onPrintExam?: (exam: Exam) => void;
@@ -129,6 +131,8 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
   currentUser,
   canTakeExam = true,
   canDownloadDocuments = true,
+  canDownloadKhbd = true,
+  isFreeTrialTier = false,
   onRequireLogin,
   onRequireVipUpgrade,
   onStartExam,
@@ -1264,6 +1268,8 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
           allGradeChapters={allChaptersForActiveGrade}
           currentUser={currentUser}
           canDownloadDocuments={canDownloadDocuments}
+          canDownloadKhbd={canDownloadKhbd}
+          isFreeTrialTier={isFreeTrialTier}
           onRequireLogin={onRequireLogin}
           onRequireVipUpgrade={onRequireVipUpgrade}
         />

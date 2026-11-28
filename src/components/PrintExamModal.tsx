@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Exam } from '../types/exam';
 import { Printer, X, Download, CheckCircle2 } from 'lucide-react';
 import { TrueFalseScenarioDisplay } from './TrueFalseScenarioDisplay';
-import { downloadExamAsWord } from '../utils/examDownloader';
+import { downloadExamAsWord, trackDocumentDownload } from '../utils/examDownloader';
 import { DocumentTable } from './DocumentTable';
 import { DocumentChart } from './DocumentChart';
 import { extractTableAndCitationFromBlock } from '../data/provincialAndOfficialExams';
@@ -16,6 +16,8 @@ interface PrintExamModalProps {
     studentClass: string;
     studentId?: string;
   };
+  canDownloadDocuments?: boolean;
+  onRequireVipUpgrade?: () => void;
 }
 
 export const PrintExamModal: React.FC<PrintExamModalProps> = ({
@@ -23,6 +25,8 @@ export const PrintExamModal: React.FC<PrintExamModalProps> = ({
   onClose,
   exam,
   studentProfile,
+  canDownloadDocuments = true,
+  onRequireVipUpgrade,
 }) => {
   const [includeAnswers, setIncludeAnswers] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
@@ -30,10 +34,25 @@ export const PrintExamModal: React.FC<PrintExamModalProps> = ({
   if (!isOpen) return null;
 
   const handlePrint = () => {
+    if (!canDownloadDocuments) {
+      onRequireVipUpgrade?.();
+      return;
+    }
+    trackDocumentDownload({
+      fileName: `De_Thi_Ma_${exam.code}.pdf`,
+      documentTitle: `${exam.title} (Mã đề ${exam.code})`,
+      category: 'de_thi_thpt',
+      categoryLabel: 'In / Xuất PDF Đề Thi',
+      modeLabel: includeAnswers ? 'Bản In/PDF kèm đáp án' : 'Bản In/PDF đề thi',
+    });
     window.print();
   };
 
   const handleDownloadWord = () => {
+    if (!canDownloadDocuments) {
+      onRequireVipUpgrade?.();
+      return;
+    }
     downloadExamAsWord(exam, {
       includeAnswers,
       studentName: studentProfile?.name,
