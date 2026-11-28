@@ -61,6 +61,15 @@ export interface SavedStudentQrAssignment {
 
 const STUDENT_QR_ASSIGNMENTS_STORAGE_KEY = 'agritech_student_qr_assignments_v1';
 
+export function hasExamContent(exam?: Exam | null): boolean {
+  if (!exam || typeof exam !== 'object') return false;
+  const p1 = Array.isArray(exam.partI) ? exam.partI.length : 0;
+  const p2 = Array.isArray(exam.partII) ? exam.partII.length : 0;
+  const p3 = Array.isArray(exam.partIII) ? exam.partIII.length : 0;
+  const rawLen = typeof exam.rawDocumentText === 'string' ? exam.rawDocumentText.trim().length : 0;
+  return p1 > 0 || p2 > 0 || p3 > 0 || rawLen > 0;
+}
+
 export function getSavedStudentQrAssignments(): SavedStudentQrAssignment[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -68,7 +77,7 @@ export function getSavedStudentQrAssignments(): SavedStudentQrAssignment[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed.filter((item) => item && item.exam && Array.isArray(item.exam.partI));
+      return parsed.filter((item) => item && hasExamContent(item.exam));
     }
   } catch {
     // ignore storage errors
@@ -261,7 +270,7 @@ export function findBuiltinExam(idOrCode?: string): Exam | undefined {
         localStorage.getItem(`exam_data_${normalized}`);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed && Array.isArray(parsed.partI)) {
+        if (hasExamContent(parsed)) {
           return parsed as Exam;
         }
       }
@@ -310,10 +319,16 @@ export async function copyTextCrossPlatform(text: string): Promise<boolean> {
  * Lưu đề giao lên server và localStorage để mọi thiết bị (Điện thoại thông minh Android/iOS, Máy tính)
  * chỉ cần giao bài 1 lần qua mã QR là học sinh có thể quét và làm bài không giới hạn bất cứ thời gian nào (24/7).
  */
-export async function syncAssignmentToServer(
+export async function syncAssignmentToServerDetailed(
   exam: Exam,
   config: ExamAssignmentConfig
-): Promise<boolean> {
+): Promise<{ ok: boolean; error?: string }> {
+  if (!hasExamContent(exam)) {
+    return {
+      ok: false,
+      error: 'Đề thi hiện không có nội dung câu hỏi để đồng bộ vào Mã QR.',
+    };
+  }
   const permanentConfig: ExamAssignmentConfig = {
     ...config,
     isPermanent: true,
@@ -321,7 +336,9 @@ export async function syncAssignmentToServer(
     anytimeAccess: true,
   };
   saveAssignmentConfig(exam, permanentConfig);
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') {
+    return { ok: false, error: 'Môi trường không hỗ trợ đồng bộ.' };
+  }
   const { attachedFileDataUrl: _omittedBlob, ...lightExam } = exam as any;
   try {
     localStorage.setItem(`exam_data_${exam.code}`, JSON.stringify(lightExam));
@@ -333,10 +350,36 @@ export async function syncAssignmentToServer(
   // Luôn loại bỏ attachedFileDataUrl (tệp PDF/Word gốc dung lượng lớn) khi đồng bộ đề QR
   // nhưng giữ nguyên 100% ảnh minh họa, bảng biểu (tableData/extraTables), biểu đồ (chartData/extraCharts) và Phần III
   const payloadStr = JSON.stringify({ exam: lightExam, config: permanentConfig });
-
   const authHeaders = authService.getAuthHeaders({ 'Content-Type': 'application/json' });
 
-  // Đồng bộ chéo sang cả domain đối ứng (ais-dev <-> ais-pre) để mã QR hoạt động vĩnh viễn trên mọi đường dẫn
+  const postToEndpoint = async (url: string): Promise<{ ok: boolean; status: number; message?: string }> => {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: authHeaders,
+        body: payloadStr,
+      });
+      if (res.ok) return { ok: true, status: res.status };
+      let msg: string | undefined;
+      try {
+        const errJson = await res.json();
+        if (errJson?.message) msg = String(errJson.message);
+      } catch {}
+      return { ok: false, status: res.status, message: msg };
+    } catch {
+      return { ok: false, status: 0 };
+    }
+  };
+
+  // Đồng bộ chính lên máy chủ hiện tại (có tự động thử lại 1 lần nếu lỗi mạng tạm thời)
+  let primaryResult = await postToEndpoint('/api/assignments?__storage_access_granted=1');
+  if (!primaryResult.ok && (primaryResult.status === 0 || primaryResult.status >= 500)) {
+    await new Promise((r) => setTimeout(r, 400));
+    primaryResult = await postToEndpoint('/api/assignments?__storage_access_granted=1');
+  }
+
+  // Đồng bộ chéo sang domain đối ứng (ais-dev <-> ais-pre) để mã QR hoạt động vĩnh viễn trên mọi đường dẫn
+  let peerOk = false;
   try {
     const origin = window.location.origin;
     const peerOrigin = origin.includes('//ais-dev-')
@@ -345,24 +388,31 @@ export async function syncAssignmentToServer(
       ? origin.replace('//ais-pre-', '//ais-dev-')
       : '';
     if (peerOrigin) {
-      fetch(`${peerOrigin}/api/assignments?__storage_access_granted=1`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: payloadStr,
-      }).catch(() => {});
+      const peerRes = await postToEndpoint(`${peerOrigin}/api/assignments?__storage_access_granted=1`);
+      peerOk = peerRes.ok;
     }
   } catch {}
 
-  try {
-    const res = await fetch('/api/assignments?__storage_access_granted=1', {
-      method: 'POST',
-      headers: authHeaders,
-      body: payloadStr,
-    });
-    return res.ok;
-  } catch {
-    return false;
+  if (primaryResult.ok || peerOk) {
+    return { ok: true };
   }
+
+  return {
+    ok: false,
+    error:
+      primaryResult.message ||
+      (primaryResult.status === 401 || primaryResult.status === 403
+        ? 'Phiên đăng nhập chưa được xác thực để giao đề này. Vui lòng đăng nhập lại!'
+        : 'Không thể kết nối máy chủ để đồng bộ nội dung đề. Vui lòng bấm "Đồng bộ lại ngay".'),
+  };
+}
+
+export async function syncAssignmentToServer(
+  exam: Exam,
+  config: ExamAssignmentConfig
+): Promise<boolean> {
+  const result = await syncAssignmentToServerDetailed(exam, config);
+  return result.ok;
 }
 
 function hashStringSeed(str: string): number {

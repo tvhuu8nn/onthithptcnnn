@@ -10,6 +10,7 @@ import {
   createUniqueShuffleSeed,
   parseStudentUrlParams,
   findBuiltinExam,
+  hasExamContent,
   prepareExamForStudent,
   getSavedStudentQrAssignments,
   saveStudentQrAssignment,
@@ -599,6 +600,7 @@ export default function App() {
     shuffleQuestions: boolean;
     shuffleOptions: boolean;
   } | null>(null);
+  const [isLoadingQrExam, setIsLoadingQrExam] = useState<boolean>(false);
 
   // Check URL query/hash/path parameters OR active server assignment for student arriving via QR code on Smartphone / PC
   useEffect(() => {
@@ -669,25 +671,67 @@ export default function App() {
         }));
       }
 
-      // Đồng bộ thêm thông tin cấu hình phòng thi (hoặc đề tùy chỉnh/ngẫu nhiên từ thiết bị khác) trên server
-      const lookupKey =
-        studentParams.examId || studentParams.customCode || studentParams.code || 'active';
+      // Đồng bộ thêm thông tin cấu hình phòng thi (hoặc đề tùy chỉnh/tải lên từ thiết bị khác) trên server
+      if (!matchedExam) {
+        setIsLoadingQrExam(true);
+      }
+
+      const candidateLookupKeys = Array.from(
+        new Set(
+          [
+            studentParams.examId,
+            studentParams.customCode,
+            studentParams.code,
+          ]
+            .map((k) => String(k || '').trim())
+            .filter(Boolean)
+        )
+      );
+      if (candidateLookupKeys.length === 0) {
+        candidateLookupKeys.push('active');
+      }
       const teacherParam = studentParams.teacherUsername
         ? `?teacher=${encodeURIComponent(studentParams.teacherUsername)}`
         : '';
-      fetch(`/api/assignments/${encodeURIComponent(lookupKey)}${teacherParam}`, { cache: 'no-store' })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((payload) => {
-          if (payload?.sessionClosed || payload?.data?.isClosed) {
-            const cInfo = payload.closedInfo || payload.data || {};
+
+      (async () => {
+        try {
+          let resolvedPayload: any = null;
+          let resolvedLookupKey = candidateLookupKeys[0];
+
+          for (const key of candidateLookupKeys) {
+            try {
+              const res = await fetch(
+                `/api/assignments/${encodeURIComponent(key)}${teacherParam}`,
+                { cache: 'no-store' }
+              );
+              if (!res.ok) continue;
+              const json = await res.json();
+              if (json?.sessionClosed || json?.data?.isClosed) {
+                resolvedPayload = json;
+                resolvedLookupKey = key;
+                break;
+              }
+              if (json?.success && hasExamContent(json?.data?.exam)) {
+                resolvedPayload = json;
+                resolvedLookupKey = key;
+                break;
+              }
+            } catch {
+              // try next key
+            }
+          }
+
+          if (resolvedPayload?.sessionClosed || resolvedPayload?.data?.isClosed) {
+            const cInfo = resolvedPayload.closedInfo || resolvedPayload.data || {};
             setActiveExam(null);
             setStudentEntryConfig(null);
             setClosedQrSessionNotice({
-              examTitle: payload?.data?.exam?.title || matchedExam?.title,
-              examCode: cInfo.examCode || payload?.data?.exam?.code || studentParams.code,
+              examTitle: resolvedPayload?.data?.exam?.title || matchedExam?.title,
+              examCode: cInfo.examCode || resolvedPayload?.data?.exam?.code || studentParams.code,
               teacherName:
                 cInfo.closedByName ||
-                payload?.data?.config?.teacherName ||
+                resolvedPayload?.data?.config?.teacherName ||
                 studentParams.teacherName ||
                 cInfo.closedBy ||
                 studentParams.teacherUsername,
@@ -698,20 +742,26 @@ export default function App() {
             });
             return;
           }
-          if (payload?.success && payload?.data?.exam) {
-            const rawServerExam: Exam = payload.data.exam;
-            const serverCfg = payload.data.config || {};
+
+          if (resolvedPayload?.success && hasExamContent(resolvedPayload?.data?.exam)) {
+            const rawServerExam: Exam = resolvedPayload.data.exam;
+            const serverCfg = resolvedPayload.data.config || {};
             const isMatchingRequestedExam =
-              lookupKey === 'active' ||
+              resolvedLookupKey === 'active' ||
               (!studentParams.examId && !studentParams.code) ||
               (studentParams.examId &&
                 String(rawServerExam.id).toLowerCase() ===
                   String(studentParams.examId).toLowerCase()) ||
               (studentParams.code &&
                 String(rawServerExam.code).toLowerCase() ===
-                  String(studentParams.code).toLowerCase());
+                  String(studentParams.code).toLowerCase()) ||
+              (studentParams.customCode &&
+                (String(rawServerExam.code).toLowerCase() ===
+                  String(studentParams.customCode).toLowerCase() ||
+                  String(rawServerExam.id).toLowerCase() ===
+                    String(studentParams.customCode).toLowerCase()));
 
-            if (isMatchingRequestedExam) {
+            if (isMatchingRequestedExam || !matchedExam) {
               const shouldShuffle =
                 studentParams.shuffleQuestions !== undefined
                   ? studentParams.shuffleQuestions
@@ -743,7 +793,6 @@ export default function App() {
                 studentProfile.studentClass ||
                 '12A1';
 
-              // Lưu vĩnh viễn đề gốc từ server vào thiết bị học sinh để làm bài không giới hạn bất cứ thời gian nào
               setSavedQrAssignments(
                 saveStudentQrAssignment(rawServerExam, {
                   examId: rawServerExam.id,
@@ -778,47 +827,45 @@ export default function App() {
                 studentClass: finalClass,
                 studentId: prev?.studentId || studentProfile.studentId || '',
               }));
+              return;
             }
-          } else if (!matchedExam) {
-            // Dự phòng cuối cùng nếu cả cục bộ và server đều không tìm thấy mã đề
-            const fallbackShouldShuffle = studentParams.shuffleQuestions !== false;
-            const fallbackShuffleOptions = studentParams.shuffleOptions !== false;
-            const fallbackExam = prepareExamForStudent(
-              MOCK_EXAMS[0],
-              fallbackShouldShuffle,
-              visitShuffleSeed,
-              fallbackShuffleOptions
-            );
-            setActiveExamShuffleMeta({
-              rawExam: MOCK_EXAMS[0],
-              shuffleQuestions: fallbackShouldShuffle,
-              shuffleOptions: fallbackShuffleOptions,
-            });
-            setActiveExam(fallbackExam);
-            setCustomExamDuration(studentParams.durationMinutes || 50);
-            setActiveTeacherNote(studentParams.teacherNote);
           }
-        })
-        .catch(() => {
+
           if (!matchedExam) {
+            // Kiểm tra kho đề QR đã lưu trên thiết bị học sinh trước khi dùng đề chuẩn mặc định
+            const savedMatch = getSavedStudentQrAssignments().find((item) => {
+              const eId = String(item.exam.id || '').toLowerCase();
+              const eCode = String(item.exam.code || '').toLowerCase();
+              return candidateLookupKeys.some((k) => {
+                const kl = k.toLowerCase();
+                return eId === kl || eCode === kl;
+              });
+            });
+            const fallbackSource =
+              savedMatch && hasExamContent(savedMatch.exam) ? savedMatch.exam : MOCK_EXAMS[0];
             const fallbackShouldShuffle = studentParams.shuffleQuestions !== false;
             const fallbackShuffleOptions = studentParams.shuffleOptions !== false;
             const fallbackExam = prepareExamForStudent(
-              MOCK_EXAMS[0],
+              fallbackSource,
               fallbackShouldShuffle,
               visitShuffleSeed,
               fallbackShuffleOptions
             );
             setActiveExamShuffleMeta({
-              rawExam: MOCK_EXAMS[0],
+              rawExam: fallbackSource,
               shuffleQuestions: fallbackShouldShuffle,
               shuffleOptions: fallbackShuffleOptions,
             });
             setActiveExam(fallbackExam);
-            setCustomExamDuration(studentParams.durationMinutes || 50);
+            setCustomExamDuration(
+              studentParams.durationMinutes || fallbackSource.durationMinutes || 50
+            );
             setActiveTeacherNote(studentParams.teacherNote);
           }
-        });
+        } finally {
+          setIsLoadingQrExam(false);
+        }
+      })();
     }
   }, []);
 
@@ -1117,6 +1164,22 @@ export default function App() {
       ? examList[examList.length - 1]
       : examList[0]);
 
+  if (isLoadingQrExam && !activeExam && !closedQrSessionNotice) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-emerald-200 shadow-lg p-6 text-center space-y-3">
+          <div className="w-10 h-10 mx-auto rounded-full border-4 border-emerald-200 border-t-emerald-700 animate-spin" />
+          <h1 className="text-lg font-extrabold text-slate-900">
+            Đang tải nội dung đề thi từ Mã QR...
+          </h1>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Hệ thống đang đồng bộ đầy đủ câu hỏi, hình ảnh và bảng biểu từ máy chủ. Vui lòng đợi trong giây lát.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (closedQrSessionNotice) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-rose-50 to-slate-50 flex items-center justify-center p-4">
@@ -1227,7 +1290,8 @@ export default function App() {
             ]}
             currentUser={currentUser}
             onStartDirect={(exam, cfg) => {
-              const sourceRaw = assignQrExam || exam;
+              const sourceRaw =
+                assignQrExam && assignQrExam.id === exam.id ? assignQrExam : exam;
               setSavedQrAssignments(
                 saveStudentQrAssignment(sourceRaw, {
                   examId: sourceRaw.id,
@@ -2685,7 +2749,8 @@ export default function App() {
           ]}
           currentUser={currentUser}
           onStartDirect={(exam, cfg) => {
-            const sourceRaw = assignQrExam || exam;
+            const sourceRaw =
+              assignQrExam && assignQrExam.id === exam.id ? assignQrExam : exam;
             setSavedQrAssignments(
               saveStudentQrAssignment(sourceRaw, {
                 examId: sourceRaw.id,

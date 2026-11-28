@@ -1991,16 +1991,27 @@ const ASSIGNMENTS_FILE = path.join(DATA_DIR, 'assignments.json');
 const TMP_ASSIGNMENTS_FILE = '/tmp/agritech_assignments.json';
 const sharedAssignmentsMap = new Map<string, any>();
 
+function hasExamQuestionsOrContent(ex: any): boolean {
+  if (!ex || typeof ex !== 'object') return false;
+  const p1 = Array.isArray(ex.partI) ? ex.partI.length : 0;
+  const p2 = Array.isArray(ex.partII) ? ex.partII.length : 0;
+  const p3 = Array.isArray(ex.partIII) ? ex.partIII.length : 0;
+  const rawLen = typeof ex.rawDocumentText === 'string' ? ex.rawDocumentText.trim().length : 0;
+  return p1 > 0 || p2 > 0 || p3 > 0 || rawLen > 0;
+}
+
 function loadAssignmentsFromDisk() {
   for (const file of [TMP_ASSIGNMENTS_FILE, ASSIGNMENTS_FILE]) {
     try {
       if (fs.existsSync(file)) {
         const raw = JSON.parse(fs.readFileSync(file, 'utf-8'));
         if (raw && typeof raw === 'object') {
-          Object.entries(raw).forEach(([k, v]) => {
-            if (v && typeof v === 'object') {
-              sharedAssignmentsMap.set(k, v);
+          Object.entries(raw).forEach(([k, v]: [string, any]) => {
+            if (!v || typeof v !== 'object') return;
+            if (!k.startsWith('closed_lock__') && v.exam && !hasExamQuestionsOrContent(v.exam)) {
+              return;
             }
+            sharedAssignmentsMap.set(k, v);
           });
         }
       }
@@ -2028,6 +2039,9 @@ function persistAssignments() {
     }
     const obj: Record<string, any> = {};
     sharedAssignmentsMap.forEach((v, k) => {
+      if (!k.startsWith('closed_lock__') && v?.exam && !hasExamQuestionsOrContent(v.exam)) {
+        return;
+      }
       obj[k] = stripHeavyBlobFromRecord(v);
     });
     const content = JSON.stringify(obj, null, 2);
@@ -2044,19 +2058,25 @@ async function upsertAssignmentKeysToCloudSql(keys: string[], record: any): Prom
   if (!keys.length || !record) return;
   try {
     const lightRecord = stripHeavyBlobFromRecord(record);
-    const escJson = escapeSqlLiteral(JSON.stringify(lightRecord));
+    const recordJson = JSON.stringify(lightRecord);
     const nowMs = Date.now();
-    const statements = keys
-      .map((k) => {
-        const escK = escapeSqlLiteral(String(k).slice(0, 200));
-        return `INSERT INTO agritech_qr_assignments_store (assignment_key, record_json, updated_at)
-                VALUES ('${escK}', '${escJson}', ${nowMs})
-                ON CONFLICT (assignment_key) DO UPDATE SET
-                  record_json = EXCLUDED.record_json,
-                  updated_at = EXCLUDED.updated_at;`;
-      })
-      .join('\n');
-    await pgQuery(statements);
+    const uniqueKeys = Array.from(
+      new Set(keys.map((k) => String(k || '').trim().slice(0, 200)).filter(Boolean))
+    );
+    await Promise.allSettled(
+      uniqueKeys.map((cleanKey) =>
+        pgQueryParams(
+          `INSERT INTO agritech_qr_assignments_store (assignment_key, record_json, updated_at)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (assignment_key) DO UPDATE SET
+             record_json = EXCLUDED.record_json,
+             updated_at = EXCLUDED.updated_at`,
+          [cleanKey, recordJson, nowMs],
+          false,
+          10000
+        )
+      )
+    );
   } catch {}
 }
 
@@ -2084,7 +2104,7 @@ async function loadAssignmentsFromCloudSql(): Promise<void> {
       if (!k || !jsonStr) continue;
       try {
         const parsed = JSON.parse(jsonStr);
-        if (parsed && (parsed.exam || k.startsWith('closed_lock__'))) {
+        if (parsed && (k.startsWith('closed_lock__') || hasExamQuestionsOrContent(parsed.exam))) {
           if (parsed.exam?.id && deletedDocIds.has(String(parsed.exam.id))) continue;
           sharedAssignmentsMap.set(k, parsed);
           loadedAny = true;
@@ -2113,16 +2133,18 @@ async function lookupAssignmentFromCloudSqlOrPeers(
     candidateKeys.add(key.toLowerCase());
   }
 
-  // 1. Try Cloud SQL permanent store
+  // 1. Try Cloud SQL permanent store (parameterized query)
   try {
     for (const ck of candidateKeys) {
-      const escK = escapeSqlLiteral(ck.slice(0, 200));
-      const rows = await pgQuery(
-        `SELECT record_json FROM agritech_qr_assignments_store WHERE assignment_key = '${escK}' LIMIT 1;`
+      const rows = await pgQueryParams(
+        `SELECT record_json FROM agritech_qr_assignments_store WHERE assignment_key = $1 LIMIT 1`,
+        [ck.slice(0, 200)],
+        false,
+        6000
       );
       if (rows.length > 0 && rows[0][0]) {
         const parsed = JSON.parse(rows[0][0]);
-        if (parsed && parsed.exam) {
+        if (parsed && hasExamQuestionsOrContent(parsed.exam)) {
           sharedAssignmentsMap.set(ck, parsed);
           persistAssignments();
           return parsed;
@@ -2136,7 +2158,7 @@ async function lookupAssignmentFromCloudSqlOrPeers(
     const peers = getPeerOrigins(req);
     for (const peer of peers) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2200);
+      const timer = setTimeout(() => controller.abort(), 2500);
       try {
         const tQuery = qTeacher ? `&teacher=${encodeURIComponent(qTeacher)}` : '';
         const peerRes = await fetch(
@@ -2149,7 +2171,7 @@ async function lookupAssignmentFromCloudSqlOrPeers(
         clearTimeout(timer);
         if (peerRes.ok) {
           const payload = await peerRes.json();
-          if (payload?.success && payload?.data?.exam) {
+          if (payload?.success && hasExamQuestionsOrContent(payload?.data?.exam)) {
             const rec = payload.data;
             candidateKeys.forEach((ck) => sharedAssignmentsMap.set(ck, rec));
             persistAssignments();
@@ -2508,9 +2530,15 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
   if (!exam || (!exam.id && !exam.code)) {
     return res.status(400).json({ success: false, message: 'Thiếu dữ liệu đề thi' });
   }
+  const examIdLower = String(exam.id || '').trim().toLowerCase();
+  const examCodeLower = String(exam.code || '').trim().toLowerCase();
+
   // Nếu đề thuộc tài liệu riêng tư do người dùng tải lên, chỉ đúng người đăng hoặc Admin mới được giao bài
   const matchedUploaded = sharedUploadedExams.find(
-    (u) => u && exam.id && String(u.id) === String(exam.id)
+    (u) =>
+      u &&
+      ((examIdLower && String(u.id || '').trim().toLowerCase() === examIdLower) ||
+        (examCodeLower && String(u.code || '').trim().toLowerCase() === examCodeLower))
   );
   if (matchedUploaded && !isPublicAdminUploadedExam(matchedUploaded)) {
     const caller = getVerifiedAuthIdentity(req);
@@ -2547,9 +2575,26 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
 
   // Loại bỏ attachedFileDataUrl (file PDF/Word gốc dung lượng lớn) nhưng giữ nguyên 100% ảnh, bảng, biểu đồ và Phần III
   const { attachedFileDataUrl: _omitBlob, ...examWithoutBlob } = exam;
-  const mergedExamForAssignment = matchedUploaded
+  let mergedExamForAssignment: any = matchedUploaded
     ? {
         ...examWithoutBlob,
+        partI:
+          Array.isArray(examWithoutBlob.partI) && examWithoutBlob.partI.length > 0
+            ? examWithoutBlob.partI
+            : Array.isArray(matchedUploaded.partI)
+            ? matchedUploaded.partI
+            : [],
+        partII:
+          Array.isArray(examWithoutBlob.partII) && examWithoutBlob.partII.length > 0
+            ? examWithoutBlob.partII
+            : Array.isArray(matchedUploaded.partII)
+            ? matchedUploaded.partII
+            : [],
+        ...(Array.isArray(examWithoutBlob.partIII) && examWithoutBlob.partIII.length > 0
+          ? { partIII: examWithoutBlob.partIII }
+          : Array.isArray(matchedUploaded.partIII) && matchedUploaded.partIII.length > 0
+          ? { partIII: matchedUploaded.partIII }
+          : {}),
         ...(examWithoutBlob.rawDocumentText
           ? {}
           : matchedUploaded.rawDocumentText
@@ -2572,6 +2617,37 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
           : {}),
       }
     : examWithoutBlob;
+
+  // Nếu payload gửi lên bị thiếu/rỗng câu hỏi, tự động bổ sung từ đề tự tạo hoặc kho đề chuẩn trên máy chủ
+  if (!hasExamQuestionsOrContent(mergedExamForAssignment)) {
+    const hydratedFallback =
+      sharedCustomExams.find(
+        (c: any) =>
+          (examIdLower && String(c?.id || '').toLowerCase() === examIdLower) ||
+          (examCodeLower && String(c?.code || '').toLowerCase() === examCodeLower)
+      ) ||
+      findBuiltinExamOnServer(exam.id) ||
+      findBuiltinExamOnServer(exam.code);
+    if (hydratedFallback && hasExamQuestionsOrContent(hydratedFallback)) {
+      const { attachedFileDataUrl: _omitFb, ...cleanFb } = hydratedFallback;
+      mergedExamForAssignment = {
+        ...cleanFb,
+        ...mergedExamForAssignment,
+        partI: Array.isArray(cleanFb.partI) ? cleanFb.partI : [],
+        partII: Array.isArray(cleanFb.partII) ? cleanFb.partII : [],
+        ...(Array.isArray(cleanFb.partIII) ? { partIII: cleanFb.partIII } : {}),
+        ...(cleanFb.rawDocumentText ? { rawDocumentText: cleanFb.rawDocumentText } : {}),
+      };
+    }
+  }
+
+  // Tuyệt đối không lưu đè một đề rỗng (không có câu hỏi và không có văn bản gốc) lên hệ thống giao đề QR
+  if (!hasExamQuestionsOrContent(mergedExamForAssignment)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Đề thi không có nội dung câu hỏi để đồng bộ vào mã QR. Vui lòng chọn đề có nội dung hợp lệ!',
+    });
+  }
 
   const nowIso = new Date().toISOString();
   const nowMs = Date.now();
@@ -2659,7 +2735,7 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
     }
   }
 
-  // Replicate to counterpart origin (ais-dev <-> ais-pre) so QR code works permanently across both URLs
+  // Replicate to counterpart origin (ais-dev <-> ais-pre) with bounded await so QR code has full exam content immediately on both URLs
   if (!isPeerReplicatedRequest(req)) {
     const peers = getPeerOrigins(req);
     const lightRecord = stripHeavyBlobFromRecord(record);
@@ -2670,17 +2746,27 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
     if (typeof req.headers.authorization === 'string' && req.headers.authorization.trim()) {
       peerHeaders.Authorization = req.headers.authorization;
     }
-    peers.forEach((peer) => {
-      fetch(`${peer}/api/assignments?peerReplicated=1`, {
-        method: 'POST',
-        headers: peerHeaders,
-        body: JSON.stringify({
-          exam: lightRecord.exam,
-          config: lightRecord.config,
-          peerReplicated: true,
-        }),
-      }).catch(() => {});
-    });
+    await Promise.allSettled(
+      peers.map(async (peer) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 2500);
+        try {
+          await fetch(`${peer}/api/assignments?peerReplicated=1`, {
+            method: 'POST',
+            headers: peerHeaders,
+            body: JSON.stringify({
+              exam: lightRecord.exam,
+              config: lightRecord.config,
+              peerReplicated: true,
+            }),
+            signal: controller.signal,
+          });
+        } catch {
+        } finally {
+          clearTimeout(timer);
+        }
+      })
+    );
   }
 
   broadcastSSE('assignment_updated', record);
@@ -3145,15 +3231,62 @@ app.get('/api/assignments/:key', async (req: Request, res: Response) => {
   const key = String(req.params.key || '').trim();
   const qTeacher = String(req.query.teacher || req.query.t || '').trim().toLowerCase();
   const isGenericActive = !key || key === 'active' || key === '__latest_active__';
+  const pickValidRecord = (rec: any): any =>
+    rec && hasExamQuestionsOrContent(rec.exam) ? rec : null;
+
   let found = isGenericActive
-    ? (qTeacher ? sharedAssignmentsMap.get(`teacher_latest__${qTeacher}`) : null) ||
-      sharedAssignmentsMap.get('__latest_active__')
-    : (qTeacher ? sharedAssignmentsMap.get(`${qTeacher}__${key.toLowerCase()}`) : null) ||
-      sharedAssignmentsMap.get(key) ||
-      sharedAssignmentsMap.get(key.toLowerCase());
+    ? pickValidRecord(qTeacher ? sharedAssignmentsMap.get(`teacher_latest__${qTeacher}`) : null) ||
+      pickValidRecord(sharedAssignmentsMap.get('__latest_active__'))
+    : pickValidRecord(qTeacher ? sharedAssignmentsMap.get(`${qTeacher}__${key.toLowerCase()}`) : null) ||
+      pickValidRecord(sharedAssignmentsMap.get(key)) ||
+      pickValidRecord(sharedAssignmentsMap.get(key.toLowerCase()));
   if (!found) {
-    found = await lookupAssignmentFromCloudSqlOrPeers(key, qTeacher, req);
+    found = pickValidRecord(await lookupAssignmentFromCloudSqlOrPeers(key, qTeacher, req));
   }
+
+  // Fallback sang đề tự tạo, đề tải lên công khai hoặc kho đề chuẩn nếu chưa có bản ghi giao QR
+  if (!found && !isGenericActive) {
+    const keyLower = key.toLowerCase();
+    const customMatch = sharedCustomExams.find(
+      (e: any) =>
+        String(e?.id || '').toLowerCase() === keyLower ||
+        String(e?.code || '').toLowerCase() === keyLower
+    );
+    let fallbackExam: any = hasExamQuestionsOrContent(customMatch) ? customMatch : null;
+    if (!fallbackExam) {
+      const publicUploaded = sharedUploadedExams.find(
+        (e: any) =>
+          isPublicAdminUploadedExam(e) &&
+          (String(e?.id || '').toLowerCase() === keyLower ||
+            String(e?.code || '').toLowerCase() === keyLower)
+      );
+      if (hasExamQuestionsOrContent(publicUploaded)) {
+        fallbackExam = publicUploaded;
+      }
+    }
+    if (!fallbackExam) {
+      const builtinMatch = findBuiltinExamOnServer(key);
+      if (hasExamQuestionsOrContent(builtinMatch)) {
+        fallbackExam = builtinMatch;
+      }
+    }
+    if (fallbackExam) {
+      const { attachedFileDataUrl: _omitFallbackBlob, ...cleanFallbackExam } = fallbackExam;
+      found = {
+        exam: cleanFallbackExam,
+        config: {
+          examId: cleanFallbackExam.id,
+          examCode: cleanFallbackExam.code,
+          durationMinutes: cleanFallbackExam.durationMinutes || 50,
+          shuffleQuestions: true,
+          shuffleOptions: true,
+          showSolutionsAfterSubmit: true,
+        },
+        isPermanent: true,
+      };
+    }
+  }
+
   const closedInfo = await resolveClosedSessionInfoAsync({
     examId: found?.exam?.id || (!isGenericActive ? key : undefined),
     examCode: found?.exam?.code || (!isGenericActive ? key : undefined),
@@ -8096,27 +8229,52 @@ const EXAMS_CATALOG_GZ_FILE = path.join(DATA_DIR, 'exams-catalog.json.gz');
 const EXAMS_CATALOG_FILE = path.join(DATA_DIR, 'exams-catalog.json');
 let builtinExamsCatalog: any[] = [];
 
-try {
-  let rawJson = '';
-  if (fs.existsSync(EXAMS_CATALOG_BR_FILE)) {
-    rawJson = zlib.brotliDecompressSync(fs.readFileSync(EXAMS_CATALOG_BR_FILE)).toString('utf-8');
-  } else if (fs.existsSync(EXAMS_CATALOG_GZ_FILE)) {
-    rawJson = zlib.gunzipSync(fs.readFileSync(EXAMS_CATALOG_GZ_FILE)).toString('utf-8');
-  } else if (fs.existsSync(EXAMS_CATALOG_FILE)) {
-    rawJson = fs.readFileSync(EXAMS_CATALOG_FILE, 'utf-8');
-  }
-  if (rawJson) {
-    const parsedCatalog = JSON.parse(rawJson);
-    if (Array.isArray(parsedCatalog)) {
-      builtinExamsCatalog = parsedCatalog;
+function loadBuiltinExamsCatalogFromDisk(): void {
+  try {
+    let rawJson = '';
+    if (fs.existsSync(EXAMS_CATALOG_BR_FILE)) {
+      rawJson = zlib.brotliDecompressSync(fs.readFileSync(EXAMS_CATALOG_BR_FILE)).toString('utf-8');
+    } else if (fs.existsSync(EXAMS_CATALOG_GZ_FILE)) {
+      rawJson = zlib.gunzipSync(fs.readFileSync(EXAMS_CATALOG_GZ_FILE)).toString('utf-8');
+    } else if (fs.existsSync(EXAMS_CATALOG_FILE)) {
+      rawJson = fs.readFileSync(EXAMS_CATALOG_FILE, 'utf-8');
     }
+    if (rawJson) {
+      const parsedCatalog = JSON.parse(rawJson);
+      if (Array.isArray(parsedCatalog)) {
+        builtinExamsCatalog = parsedCatalog.filter((e) => hasExamQuestionsOrContent(e));
+      }
+    }
+  } catch (err) {
+    console.warn('[ExamsCatalog] Could not load exams catalog:', err);
   }
-} catch (err) {
-  console.warn('[ExamsCatalog] Could not load exams catalog:', err);
+}
+
+loadBuiltinExamsCatalogFromDisk();
+
+function buildDeterministicRandomExamOnServer(rawId: string, code: string, seed: number): any | undefined {
+  if (builtinExamsCatalog.length === 0) return undefined;
+  const standardPool = builtinExamsCatalog.filter(
+    (e: any) => Array.isArray(e?.partI) && e.partI.length >= 20 && Array.isArray(e?.partII) && e.partII.length >= 4
+  );
+  const sourceList = standardPool.length > 0 ? standardPool : builtinExamsCatalog;
+  const baseExam = sourceList[Math.abs(seed) % sourceList.length];
+  if (!baseExam || !hasExamQuestionsOrContent(baseExam)) return undefined;
+  const shuffled = prepareExamForStudentOnServer(baseExam, true, `random_${code}_${seed}`, true);
+  return {
+    ...shuffled,
+    id: rawId,
+    code: code || shuffled.code,
+    title: `Đề Thi Tạo Ngẫu Nhiên Chuẩn Ma Trận — Mã Đề ${code}`,
+  };
 }
 
 function findBuiltinExamOnServer(idOrCode?: string): any | undefined {
-  if (!idOrCode || builtinExamsCatalog.length === 0) return undefined;
+  if (!idOrCode) return undefined;
+  if (builtinExamsCatalog.length === 0) {
+    loadBuiltinExamsCatalogFromDisk();
+  }
+  if (builtinExamsCatalog.length === 0) return undefined;
   const raw = String(idOrCode).trim();
   const normalized = raw.toLowerCase();
   if (!normalized) return undefined;
@@ -8130,6 +8288,34 @@ function findBuiltinExamOnServer(idOrCode?: string): any | undefined {
     (e: any) => String(e?.code || '').toLowerCase() === normalized
   );
   if (exactCode) return exactCode;
+
+  // Hỗ trợ alias chương Lớp 10, 11, 12 (VD: cn10-c1 -> exam-cn10-c1 hoặc cn10-c1-de1)
+  const chapterAliasMatch = builtinExamsCatalog.find((e: any) => {
+    const eid = String(e?.id || '').toLowerCase();
+    return eid === `exam-${normalized}` || eid.startsWith(`${normalized}-de1`) || eid.startsWith(`${normalized}_`);
+  });
+  if (chapterAliasMatch) return chapterAliasMatch;
+
+  // Hỗ trợ mã chuẩn hóa bỏ khoảng trắng/dấu gạch nối
+  const compactNorm = normalized.replace(/[\s_-]+/g, '');
+  if (compactNorm.length >= 3) {
+    const compactMatch = builtinExamsCatalog.find((e: any) => {
+      const cId = String(e?.id || '').toLowerCase().replace(/[\s_-]+/g, '');
+      const cCode = String(e?.code || '').toLowerCase().replace(/[\s_-]+/g, '');
+      return cId === compactNorm || cCode === compactNorm;
+    });
+    if (compactMatch) return compactMatch;
+  }
+
+  // Hỗ trợ tái tạo đề ngẫu nhiên từ định dạng ID: exam-random-{code}-{seed}
+  const randomMatch = raw.match(/^exam-random-([a-zA-Z0-9]+)-(\d+)$/i);
+  if (randomMatch) {
+    const rCode = randomMatch[1];
+    const rSeed = parseInt(randomMatch[2], 10);
+    if (!isNaN(rSeed) && rSeed > 0) {
+      return buildDeterministicRandomExamOnServer(raw, rCode, rSeed);
+    }
+  }
 
   return undefined;
 }
@@ -9852,10 +10038,52 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
         renderPalette();
       }
 
+      var didAttemptRecovery = false;
+      function attemptExamContentRecovery() {
+        if (didAttemptRecovery) return;
+        didAttemptRecovery = true;
+        var keysToTry = [];
+        if (config.examId) keysToTry.push(config.examId);
+        if (exam.id && keysToTry.indexOf(exam.id) === -1) keysToTry.push(exam.id);
+        if (config.examCode && keysToTry.indexOf(config.examCode) === -1) keysToTry.push(config.examCode);
+        if (exam.code && keysToTry.indexOf(exam.code) === -1) keysToTry.push(exam.code);
+        var tParam = config.teacherUsername ? '?teacher=' + encodeURIComponent(config.teacherUsername) : '';
+
+        function tryNext(idx) {
+          if (idx >= keysToTry.length) return;
+          fetch('/api/assignments/' + encodeURIComponent(keysToTry[idx]) + tParam, { cache: 'no-store' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(payload) {
+              var ex = payload && payload.data && payload.data.exam;
+              var hasContent = ex && (
+                (Array.isArray(ex.partI) && ex.partI.length > 0) ||
+                (Array.isArray(ex.partII) && ex.partII.length > 0) ||
+                (Array.isArray(ex.partIII) && ex.partIII.length > 0) ||
+                (typeof ex.rawDocumentText === 'string' && ex.rawDocumentText.trim().length > 0)
+              );
+              if (hasContent) {
+                exam = ex;
+                exam.partI = Array.isArray(exam.partI) ? exam.partI : [];
+                exam.partII = Array.isArray(exam.partII) ? exam.partII : [];
+                exam.partIII = Array.isArray(exam.partIII) ? exam.partIII : [];
+                answersPartII = {};
+                for (var pi = 0; pi < exam.partII.length; pi++) {
+                  answersPartII[exam.partII[pi].id] = { a: null, b: null, c: null, d: null };
+                }
+                renderQuestions();
+              } else {
+                tryNext(idx + 1);
+              }
+            })
+            .catch(function() { tryNext(idx + 1); });
+        }
+        tryNext(0);
+      }
+
       function renderQuestions() {
         var html = '';
 
-        if (exam.partI.length === 0 && exam.partII.length === 0 && exam.partIII.length === 0 && exam.rawDocumentText) {
+        if (exam.partI.length === 0 && exam.partII.length === 0 && exam.partIII.length === 0 && exam.rawDocumentText && String(exam.rawDocumentText).trim().length > 0) {
           html += '<div class="section-banner">';
           html += '<h2>NỘI DUNG TÀI LIỆU ĐƯỢC GIAO</h2>';
           html += '<p>Tài liệu gốc kèm đầy đủ hình ảnh, bảng biểu và biểu đồ.</p>';
@@ -9863,6 +10091,18 @@ function renderStudentExamHtml(exam: any, config: Record<string, any>): string {
           html += '<div class="card">' + renderRichTextBlock(exam.rawDocumentText, 'Hình tài liệu') + '</div>';
           document.getElementById('questionsRoot').innerHTML = html;
           updateProgressCounters();
+          return;
+        }
+
+        if (exam.partI.length === 0 && exam.partII.length === 0 && exam.partIII.length === 0) {
+          html += '<div class="card" style="border:2px solid #f59e0b;background:#fffbeb;text-align:center;padding:24px 16px;">';
+          html += '<div style="font-size:16px;font-weight:800;color:#92400e;margin-bottom:8px;">⚠️ Đang đồng bộ nội dung đề thi...</div>';
+          html += '<p style="font-size:13px;color:#78350f;margin:0 0 14px;">Nếu nội dung câu hỏi chưa hiển thị sau vài giây, hãy bấm nút bên dưới để tải lại đề thi từ máy chủ.</p>';
+          html += '<button type="button" onclick="window.location.reload()" style="padding:10px 18px;border-radius:11px;border:none;background:#059669;color:#ffffff;font-weight:800;font-size:14px;cursor:pointer;">🔄 Tải lại nội dung đề thi</button>';
+          html += '</div>';
+          document.getElementById('questionsRoot').innerHTML = html;
+          updateProgressCounters();
+          attemptExamContentRecovery();
           return;
         }
 
@@ -10697,17 +10937,10 @@ async function handleStudentExamHtmlRequest(req: Request, res: Response, next: N
     return next();
   }
 
-  const hasValidExamPayload = (ex: any): boolean =>
-    Boolean(
-      ex &&
-        (Array.isArray(ex.partI) ||
-          Array.isArray(ex.partII) ||
-          Array.isArray(ex.partIII) ||
-          Boolean(ex.rawDocumentText))
-    );
+  const hasValidExamPayload = (ex: any): boolean => hasExamQuestionsOrContent(ex);
 
   const qTeacher = String(req.query.teacher || req.query.t || '').trim();
-  const candidateKeys = [qExamId, qCode, pathKey].filter(Boolean);
+  const candidateKeys = Array.from(new Set([qExamId, qCode, pathKey].filter(Boolean)));
   let storedRecord: any = null;
   for (const key of candidateKeys) {
     const found =
@@ -10749,13 +10982,15 @@ async function handleStudentExamHtmlRequest(req: Request, res: Response, next: N
     }
   }
 
-  let resolvedExam = storedRecord?.exam || null;
-  if (!resolvedExam) {
+  let resolvedExam = storedRecord?.exam && hasValidExamPayload(storedRecord.exam) ? storedRecord.exam : null;
+  if (!resolvedExam && candidateKeys.length > 0) {
+    // 1. Kiểm tra đề tự tạo, đề công khai tải lên (cục bộ) và kho đề chuẩn 169 đề
     for (const key of candidateKeys) {
+      const keyLower = key.toLowerCase();
       const customFound = sharedCustomExams.find(
         (e: any) =>
-          String(e?.id || '').toLowerCase() === key.toLowerCase() ||
-          String(e?.code || '').toLowerCase() === key.toLowerCase()
+          String(e?.id || '').toLowerCase() === keyLower ||
+          String(e?.code || '').toLowerCase() === keyLower
       );
       if (hasValidExamPayload(customFound)) {
         resolvedExam = customFound;
@@ -10763,30 +10998,56 @@ async function handleStudentExamHtmlRequest(req: Request, res: Response, next: N
       }
       const uploadedFound = sharedUploadedExams.find(
         (e: any) =>
-          String(e?.id || '').toLowerCase() === key.toLowerCase() ||
-          String(e?.code || '').toLowerCase() === key.toLowerCase()
+          isPublicAdminUploadedExam(e) &&
+          (String(e?.id || '').toLowerCase() === keyLower ||
+            String(e?.code || '').toLowerCase() === keyLower)
       );
       if (hasValidExamPayload(uploadedFound)) {
         resolvedExam = uploadedFound;
         break;
       }
       const builtinFound = findBuiltinExamOnServer(key);
-      if (builtinFound) {
+      if (hasValidExamPayload(builtinFound)) {
         resolvedExam = builtinFound;
         break;
       }
     }
+
+    // 2. Nếu vẫn chưa thấy và mã có thể là đề công khai vừa đăng trên instance khác, đồng bộ Cloud SQL một lần
+    if (!resolvedExam) {
+      try {
+        await pullAndMergeUploadedExamsFromCloudSql(false);
+        for (const key of candidateKeys) {
+          const keyLower = key.toLowerCase();
+          const syncedPublicUploaded = sharedUploadedExams.find(
+            (e: any) =>
+              isPublicAdminUploadedExam(e) &&
+              (String(e?.id || '').toLowerCase() === keyLower ||
+                String(e?.code || '').toLowerCase() === keyLower)
+          );
+          if (hasValidExamPayload(syncedPublicUploaded)) {
+            resolvedExam = syncedPublicUploaded;
+            break;
+          }
+        }
+      } catch {}
+    }
   }
 
   if (!resolvedExam) {
-    resolvedExam = builtinExamsCatalog[0] || {
-      id: 'de-chuan-01',
-      code: '101',
-      title: 'Đề Thi Tốt Nghiệp THPT Mẫu Số 01 - Chuẩn Ma Trận',
-      durationMinutes: 50,
-      partI: [],
-      partII: [],
-    };
+    if (builtinExamsCatalog.length === 0) {
+      loadBuiltinExamsCatalogFromDisk();
+    }
+    resolvedExam =
+      findBuiltinExamOnServer('de-chuan-01') ||
+      builtinExamsCatalog[0] || {
+        id: 'de-chuan-01',
+        code: '101',
+        title: 'Đề Thi Tốt Nghiệp THPT Mẫu Số 01 - Chuẩn Ma Trận',
+        durationMinutes: 50,
+        partI: [],
+        partII: [],
+      };
   }
 
   const savedCfg: Record<string, any> = storedRecord?.config || {};

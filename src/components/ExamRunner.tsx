@@ -1183,6 +1183,77 @@ export const ExamRunner: React.FC<ExamRunnerProps> = ({
               })}
             </section>
             )}
+
+            {/* DOCUMENT-ONLY OR EMPTY CONTENT FALLBACK */}
+            {exam.partI.length === 0 &&
+              exam.partII.length === 0 &&
+              (!exam.partIII || exam.partIII.length === 0) && (
+                <section className="space-y-4 pt-2">
+                  {exam.rawDocumentText && exam.rawDocumentText.trim().length > 0 ? (
+                    <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-4">
+                      <div className="bg-emerald-50/70 p-3.5 rounded-lg border border-emerald-200/80">
+                        <h3 className="text-sm font-bold text-emerald-950">
+                          NỘI DUNG TÀI LIỆU / ĐỀ THI ĐƯỢC GIAO
+                        </h3>
+                      </div>
+                      <div className="text-sm text-slate-900 leading-relaxed whitespace-pre-line">
+                        {exam.rawDocumentText}
+                      </div>
+                      {exam.rawDocumentImages &&
+                        Object.entries(exam.rawDocumentImages).filter(([, src]) =>
+                          /^(?:data:image\/[a-zA-Z0-9.+-]+;base64,|https?:\/\/|\/)/i.test(
+                            String(src || '').trim()
+                          )
+                        ).length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                          {Object.entries(exam.rawDocumentImages)
+                            .filter(([, src]) =>
+                              /^(?:data:image\/[a-zA-Z0-9.+-]+;base64,|https?:\/\/|\/)/i.test(
+                                String(src || '').trim()
+                              )
+                            )
+                            .map(([key, src]) => (
+                            <div
+                              key={key}
+                              className="rounded-lg border border-slate-200 bg-slate-50/60 p-2 flex justify-center"
+                            >
+                              <img
+                                src={src}
+                                alt={`Hình minh họa ${key}`}
+                                className="max-h-80 w-auto object-contain rounded"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {exam.rawDocumentTables &&
+                        Object.entries(exam.rawDocumentTables).map(([key, tbl]) => (
+                          <DocumentTable key={key} tableData={tbl} className="my-2" />
+                        ))}
+                      {exam.rawDocumentCharts &&
+                        Object.entries(exam.rawDocumentCharts).map(([key, ch]) => (
+                          <DocumentChart key={key} chartData={ch} className="my-2" />
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="bg-amber-50 rounded-xl border-2 border-amber-300 p-6 text-center space-y-3">
+                      <h3 className="text-base font-bold text-amber-950">
+                        Chưa tải được nội dung câu hỏi của đề thi này
+                      </h3>
+                      <p className="text-xs text-amber-900 max-w-md mx-auto leading-relaxed">
+                        Vui lòng tải lại trang để đồng bộ lại nội dung đề từ máy chủ hoặc liên hệ giáo viên kiểm tra lại mã QR.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer"
+                      >
+                        Tải lại nội dung đề thi
+                      </button>
+                    </div>
+                  )}
+                </section>
+              )}
           </div>
 
           {/* Sticky Sidebar: Question Palette & Navigation (1 Col) */}

@@ -143,6 +143,10 @@ export interface Exam {
   partI: MultipleChoiceQuestion[]; // 24 câu (6.0 điểm)
   partII: TrueFalseQuestion[]; // 4 câu (4.0 điểm)
   partIII?: ShortAnswerQuestion[]; // Phần III: Trả lời ngắn / Tự luận (nếu có trong tài liệu tải lên)
+  rawDocumentText?: string; // Nội dung văn bản gốc của tài liệu tải lên (nếu có)
+  rawDocumentImages?: Record<string, string>; // Hình ảnh đính kèm tài liệu gốc
+  rawDocumentTables?: Record<string, ExamTableData>; // Bảng biểu cấu trúc tài liệu gốc
+  rawDocumentCharts?: Record<string, ExamChartData>; // Biểu đồ cấu trúc tài liệu gốc
 }
 
 export interface UserExamAnswers {

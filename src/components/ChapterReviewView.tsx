@@ -27,6 +27,7 @@ import {
   PenTool,
   ArrowRight,
   ArrowLeft,
+  ClipboardList,
 } from 'lucide-react';
 import { AuthUser } from '../types/auth';
 import { Exam } from '../types/exam';
@@ -37,6 +38,7 @@ import { GRADE_11_CHAPTER_EXAMS } from '../data/grade11PracticeExams';
 import { GRADE_12_SINGLE_CHAPTER_EXAMS } from '../data/grade12ChapterExams';
 import { Grade10And11ChapterFiveExamsPanel } from './Grade10And11ChapterFiveExamsPanel';
 import { Grade12ChapterFourExamsPanel } from './Grade12ChapterFourExamsPanel';
+import { KhbdLessonPlanSection } from './KhbdLessonPlanSection';
 import { downloadHtmlAsDocx, trackDocumentDownload } from '../utils/examDownloader';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
@@ -136,9 +138,9 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
   onUploadExamSuccess,
   onDeleteUploadedExam,
 }) => {
-  const [utilityView, setUtilityView] = useState<'none' | 'glossary' | 'download' | 'teacher_docs'>(
-    'none'
-  );
+  const [utilityView, setUtilityView] = useState<
+    'none' | 'khbd' | 'glossary' | 'download' | 'teacher_docs'
+  >('none');
   const [selectedChapterId, setSelectedChapterId] = useState<string>('all');
   const [grade12DomainFilter, setGrade12DomainFilter] = useState<'all' | 'forestry' | 'aquaculture'>(
     'all'
@@ -172,8 +174,15 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
 
   const gradeMeta = GRADE_META[activeGrade];
 
-  const chaptersByGrade = CHAPTER_REVIEW_DATA.filter((item) => {
-    if (item.grade !== activeGrade) return false;
+  const allChaptersForActiveGrade = CHAPTER_REVIEW_DATA.filter(
+    (item) => item.grade === activeGrade
+  );
+  const totalLessonsForActiveGrade = allChaptersForActiveGrade.reduce(
+    (sum, ch) => sum + ch.lessons.length,
+    0
+  );
+
+  const chaptersByGrade = allChaptersForActiveGrade.filter((item) => {
     if (activeGrade === '12' && grade12DomainFilter !== 'all') {
       return item.domain === grade12DomainFilter;
     }
@@ -860,7 +869,9 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
   });
 
   const bannerHeading =
-    utilityView === 'download'
+    utilityView === 'khbd'
+      ? `${gradeMeta.gradeLabel} – KHBD (CV 5512 · Tích hợp NLS 3456 & GD AI 2422)`
+      : utilityView === 'download'
       ? `${gradeMeta.gradeLabel} – Trung Tâm Tải Về Tài Liệu (.docx)`
       : utilityView === 'glossary'
       ? `${gradeMeta.gradeLabel} – Bảng Giải Thích Thuật Ngữ SGK`
@@ -871,7 +882,9 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
       : gradeMeta.reviewTitle;
 
   const bannerDescription =
-    utilityView === 'download'
+    utilityView === 'khbd'
+      ? `Hệ thống Kế hoạch bài dạy chuẩn CV 5512/BGDĐT-GDTrH cho ${gradeMeta.bookName}, tích hợp Năng lực số theo Công văn số 3456/BGDĐT-GDPT (27/06/2025) và Khung nội dung giáo dục AI theo Quyết định số 2422/QĐ-BGDĐT (18/08/2026), hỗ trợ xem chi tiết và tải file Word (.docx).`
+      : utilityView === 'download'
       ? `Tải nhanh đề cương ôn tập chương, sơ đồ tư duy và bộ đề trắc nghiệm chuẩn định dạng Microsoft Word (.docx) dành cho ${gradeMeta.bookName} hoặc trọn bộ 3 khối lớp.`
       : utilityView === 'glossary'
       ? `Tra cứu nhanh các thuật ngữ chuyên ngành trích xuất nguyên bản từ sách giáo khoa ${gradeMeta.bookName} (Kết nối tri thức với cuộc sống).`
@@ -901,8 +914,8 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
             </p>
           </div>
 
-          {/* 4 Quick Mode & Utility Stat Cards (responsive 2x2 mobile, 4-col tablet/desktop) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4 gap-2.5 shrink-0">
+          {/* 5 Quick Mode & Utility Stat Cards (Ôn tập chương, Luyện đề, KHBD, Thẻ Tải Về, Tài Liệu GV) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -945,6 +958,26 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
               <span className="text-[11px] opacity-85 block">
                 {gradeMeta.examsPerChapter} đề / chương
               </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUtilityView(utilityView === 'khbd' ? 'none' : 'khbd');
+              }}
+              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                utilityView === 'khbd'
+                  ? 'bg-indigo-200 text-indigo-950 border-indigo-100 shadow-md'
+                  : 'bg-indigo-500/30 text-indigo-100 border-indigo-300/40 hover:bg-indigo-500/45'
+              }`}
+            >
+              <span className="text-[11px] font-bold uppercase flex items-center gap-1">
+                <ClipboardList className="w-3 h-3 shrink-0" /> KHBD
+              </span>
+              <span className="text-base sm:text-lg font-extrabold block mt-0.5">
+                {totalLessonsForActiveGrade} Bài
+              </span>
+              <span className="text-[11px] opacity-90 block">5512 · NLS 3456 · AI 2422</span>
             </button>
 
             <button
@@ -1042,6 +1075,15 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
               <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
                   type="button"
+                  onClick={() => setUtilityView('khbd')}
+                  className="px-3 py-2.5 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ClipboardList className="w-3.5 h-3.5 text-indigo-700" />
+                  <span>KHBD</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setUtilityView('glossary')}
                   className="px-3 py-2.5 rounded-lg text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
@@ -1094,11 +1136,20 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
           </div>
 
           {/* Domain filter for Grade 12 + Status summary */}
-          {utilityView === 'none' && (
+          {(utilityView === 'none' || utilityView === 'khbd') && (
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs text-slate-600 font-medium">
               <div className="flex flex-wrap items-center gap-2">
                 <span>
-                  {activeMode === 'practice' ? (
+                  {utilityView === 'khbd' ? (
+                    <>
+                      Đang hiển thị KHBD của{' '}
+                      <strong className="text-indigo-800">{filteredChapters.length} chương</strong> (
+                      <strong className="text-indigo-800">
+                        {filteredChapters.reduce((sum, c) => sum + c.lessons.length, 0)} bài dạy
+                      </strong>
+                      ) {gradeMeta.gradeLabel}
+                    </>
+                  ) : activeMode === 'practice' ? (
                     <>
                       Đang hiển thị{' '}
                       <strong className="text-emerald-800">{filteredChapters.length} chương</strong> (
@@ -1157,8 +1208,8 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
             </div>
           )}
 
-          {/* Quick Chapter Pills when viewing chapters or practice exams */}
-          {utilityView === 'none' && (
+          {/* Quick Chapter Pills when viewing chapters, practice exams, or KHBD */}
+          {(utilityView === 'none' || utilityView === 'khbd') && (
             <div className="pt-2 border-t border-slate-100">
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
                 <span className="text-slate-500 font-medium shrink-0 mr-1">Chọn chương:</span>
@@ -1167,7 +1218,9 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
                   onClick={() => setSelectedChapterId('all')}
                   className={`px-2.5 py-1 rounded-md font-semibold shrink-0 transition-colors cursor-pointer ${
                     selectedChapterId === 'all'
-                      ? 'bg-emerald-800 text-white'
+                      ? utilityView === 'khbd'
+                        ? 'bg-indigo-800 text-white'
+                        : 'bg-emerald-800 text-white'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
@@ -1182,12 +1235,18 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
                     }
                     className={`px-2.5 py-1 rounded-md font-medium shrink-0 transition-colors border cursor-pointer ${
                       selectedChapterId === ch.id
-                        ? 'bg-emerald-700 text-white border-emerald-700 font-semibold'
+                        ? utilityView === 'khbd'
+                          ? 'bg-indigo-700 text-white border-indigo-700 font-semibold'
+                          : 'bg-emerald-700 text-white border-emerald-700 font-semibold'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300'
                     }`}
                   >
                     {ch.chapterNumber}: {ch.chapterTitle}
-                    {activeMode === 'practice' && ` (${gradeMeta.examsPerChapter} đề)`}
+                    {utilityView === 'khbd'
+                      ? ` (${ch.lessons.length} bài)`
+                      : activeMode === 'practice'
+                      ? ` (${gradeMeta.examsPerChapter} đề)`
+                      : ''}
                   </button>
                 ))}
               </div>
@@ -1196,8 +1255,19 @@ export const ChapterReviewView: React.FC<ChapterReviewViewProps> = ({
         </div>
       )}
 
-      {/* Main Content: Teacher Docs, Download Center, Glossary, Practice Exams (grouped by chapter), or Chapter Review */}
-      {utilityView === 'teacher_docs' ? (
+      {/* Main Content: KHBD, Teacher Docs, Download Center, Glossary, Practice Exams (grouped by chapter), or Chapter Review */}
+      {utilityView === 'khbd' ? (
+        <KhbdLessonPlanSection
+          activeGrade={activeGrade}
+          bookName={gradeMeta.bookName}
+          chapters={filteredChapters}
+          allGradeChapters={allChaptersForActiveGrade}
+          currentUser={currentUser}
+          canDownloadDocuments={canDownloadDocuments}
+          onRequireLogin={onRequireLogin}
+          onRequireVipUpgrade={onRequireVipUpgrade}
+        />
+      ) : utilityView === 'teacher_docs' ? (
         <div className="-mx-3 sm:-mx-6 lg:-mx-8 -mt-4">
           <ProvincialAndOfficialExamsView
             fixedCategory="provincial_mock"

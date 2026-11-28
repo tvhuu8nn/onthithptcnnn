@@ -7,10 +7,11 @@ import {
   createUniqueShuffleSeed,
   generateStudentExamUrl,
   getSavedAssignmentConfig,
+  hasExamContent,
   prepareExamForStudent,
   renderBrandedQrCardCanvas,
   resolveVerifiedShareOrigin,
-  syncAssignmentToServer,
+  syncAssignmentToServerDetailed,
 } from '../utils/qrExamShare';
 import {
   QrCode,
@@ -27,6 +28,8 @@ import {
   CheckCircle2,
   Shuffle,
   FileText,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 
 import { AuthUser } from '../types/auth';
@@ -84,6 +87,8 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
   );
   const [isSynced, setIsSynced] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncAttemptNonce, setSyncAttemptNonce] = useState<number>(0);
   const [copiedQrImage, setCopiedQrImage] = useState<boolean>(false);
   const [downloadedQrImage, setDownloadedQrImage] = useState<boolean>(false);
   const [showContentPreview, setShowContentPreview] = useState<boolean>(true);
@@ -151,20 +156,26 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
     [selectedExam, shuffleQuestions, shuffleOptions, previewSeedNonce]
   );
 
+  const selectedExamHasContent = hasExamContent(selectedExam);
+
   // Tự động đồng bộ nội dung đề thi và cấu hình lên máy chủ mỗi khi thay đổi đề hoặc cấu hình
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     setIsSyncing(true);
-    syncAssignmentToServer(selectedExam, currentConfig)
-      .then((ok) => {
+    setSyncError(null);
+    syncAssignmentToServerDetailed(selectedExam, currentConfig)
+      .then((res) => {
         if (!cancelled) {
-          setIsSynced(ok);
+          setIsSynced(res.ok);
+          setSyncError(res.ok ? null : res.error || 'Chưa đồng bộ được nội dung đề lên máy chủ.');
           setIsSyncing(false);
         }
       })
       .catch(() => {
         if (!cancelled) {
+          setIsSynced(false);
+          setSyncError('Lỗi kết nối khi đồng bộ nội dung đề lên máy chủ.');
           setIsSyncing(false);
         }
       });
@@ -175,6 +186,10 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
     isOpen,
     selectedExam.id,
     selectedExam.code,
+    selectedExam.partI?.length,
+    selectedExam.partII?.length,
+    selectedExam.partIII?.length,
+    Boolean(selectedExam.rawDocumentText),
     className,
     durationMinutes,
     shuffleQuestions,
@@ -183,6 +198,7 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
     teacherNote,
     currentUser?.username,
     currentUser?.fullName,
+    syncAttemptNonce,
   ]);
 
   if (!isOpen) return null;
@@ -207,7 +223,9 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
     const svgEl = qrSvgContainerRef.current?.querySelector('svg');
     if (!svgEl) return;
     try {
-      await syncAssignmentToServer(selectedExam, currentConfig);
+      const syncRes = await syncAssignmentToServerDetailed(selectedExam, currentConfig);
+      setIsSynced(syncRes.ok);
+      setSyncError(syncRes.ok ? null : syncRes.error || 'Chưa đồng bộ được nội dung đề.');
       const canvas = await renderBrandedQrCardCanvas(
         svgEl as SVGSVGElement,
         selectedExam,
@@ -233,7 +251,9 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
     const svgEl = qrSvgContainerRef.current?.querySelector('svg');
     if (!svgEl) return;
     try {
-      await syncAssignmentToServer(selectedExam, currentConfig);
+      const syncRes = await syncAssignmentToServerDetailed(selectedExam, currentConfig);
+      setIsSynced(syncRes.ok);
+      setSyncError(syncRes.ok ? null : syncRes.error || 'Chưa đồng bộ được nội dung đề.');
       const canvas = await renderBrandedQrCardCanvas(
         svgEl as SVGSVGElement,
         selectedExam,
@@ -314,17 +334,48 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
         <div className="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-h-[82vh] overflow-y-auto">
           {/* Left Column: QR Code Display & Actions */}
           <div className="lg:col-span-5 flex flex-col items-center justify-between bg-slate-50 rounded-2xl border border-slate-200 p-5 space-y-4">
-            <div className="w-full text-center space-y-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-[11px] font-bold">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+            <div className="w-full text-center space-y-1.5">
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-bold ${
+                  !selectedExamHasContent || syncError
+                    ? 'bg-rose-100 text-rose-900 border-rose-300'
+                    : isSyncing
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                }`}
+              >
+                {!selectedExamHasContent || syncError ? (
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-700" />
+                ) : isSyncing ? (
+                  <RefreshCw className="w-3.5 h-3.5 text-amber-700 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                )}
                 <span>
-                  {isSyncing
-                    ? 'Đang đồng bộ nội dung đề...'
+                  {!selectedExamHasContent
+                    ? 'Đề thi chưa có nội dung câu hỏi'
+                    : isSyncing
+                    ? 'Đang đồng bộ nội dung đề lên máy chủ...'
                     : isSynced
-                    ? 'Đã đồng bộ nội dung đề với Mã QR'
-                    : 'Sẵn sàng quét Mã QR'}
+                    ? 'Đã đồng bộ đầy đủ nội dung đề với Mã QR'
+                    : 'Chưa đồng bộ được lên máy chủ'}
                 </span>
               </span>
+              {syncError && (
+                <div className="mt-1.5 p-2 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-800 text-left space-y-1.5">
+                  <p className="font-semibold leading-snug">{syncError}</p>
+                  {selectedExamHasContent && (
+                    <button
+                      type="button"
+                      onClick={() => setSyncAttemptNonce((n) => n + 1)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-rose-700 hover:bg-rose-800 text-white font-bold text-[11px] cursor-pointer"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Đồng bộ lại ngay</span>
+                    </button>
+                  )}
+                </div>
+              )}
               <h3 className="text-sm font-extrabold text-slate-900 line-clamp-2 pt-1">
                 {selectedExam.title}
               </h3>
@@ -398,7 +449,7 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    syncAssignmentToServer(selectedExam, currentConfig);
+                    syncAssignmentToServerDetailed(selectedExam, currentConfig);
                     const freshExamForAttempt = prepareExamForStudent(
                       selectedExam,
                       shuffleQuestions,
@@ -841,6 +892,28 @@ export const AssignExamQRModal: React.FC<AssignExamQRModalProps> = ({
                       })}
                     </>
                   )}
+                  {synchronizedStudentExam.partI.length === 0 &&
+                    synchronizedStudentExam.partII.length === 0 &&
+                    partIIIList.length === 0 &&
+                    (synchronizedStudentExam.rawDocumentText &&
+                    synchronizedStudentExam.rawDocumentText.trim().length > 0 ? (
+                      <div className="space-y-1.5">
+                        <div className="font-bold text-emerald-900 text-[11px] uppercase tracking-wider">
+                          Nội dung tài liệu gốc được đồng bộ:
+                        </div>
+                        <div className="whitespace-pre-line text-slate-700 leading-relaxed">
+                          {synchronizedStudentExam.rawDocumentText.slice(0, 2000)}
+                          {synchronizedStudentExam.rawDocumentText.length > 2000 ? '\n...' : ''}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <span>
+                          Đề thi này hiện chưa có câu hỏi nào. Vui lòng chọn một đề khác ở mục 1 để đảm bảo học sinh nhận đủ nội dung khi quét mã QR.
+                        </span>
+                      </div>
+                    ))}
                 </div>
               )}
             </div>
